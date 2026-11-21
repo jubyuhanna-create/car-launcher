@@ -1,0 +1,1 @@
+-keep class com.el7ajb.carlauncher.NotifService { *; }

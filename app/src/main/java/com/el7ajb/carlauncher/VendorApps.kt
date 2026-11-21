@@ -63,7 +63,7 @@ object VendorApps {
         return out
     }
 
-    fun open(act: MainActivity, id: String): Boolean {
+    fun open(act: BaseActivity, id: String): Boolean {
         val cn = resolveAll(act)[id] ?: return false
         return act.tryStart(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(cn))
     }

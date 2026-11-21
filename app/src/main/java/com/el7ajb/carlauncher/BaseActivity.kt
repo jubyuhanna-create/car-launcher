@@ -24,6 +24,17 @@ open class BaseActivity : ComponentActivity() {
 
     open fun onLocationGranted() {}
 
+    fun hasAudio() = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    private var audioCb: ((Boolean) -> Unit)? = null
+    private val audioLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> audioCb?.invoke(ok); audioCb = null }
+
+    fun requestAudio(cb: (Boolean) -> Unit) {
+        if (hasAudio()) { cb(true); return }
+        audioCb = cb
+        try { audioLauncher.launch(Manifest.permission.RECORD_AUDIO) } catch (_: Throwable) { cb(false) }
+    }
+
     fun requestLocation() {
         if (hasLocation()) { onLocationGranted(); return }
         permLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)

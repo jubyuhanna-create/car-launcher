@@ -106,6 +106,13 @@ object S {
         "guardSub" to arrayOf("بإعدادات إمكانية الوصول (Accessibility) فعّل \"Drive\"", "בהגדרות נגישות (Accessibility) הפעל את \"Drive\"", "In Accessibility settings turn on \"Drive\""),
         "finishSetup" to arrayOf("خطوة أخيرة: فعّل هدول عشان Drive يفتح دايمًا وكل إشي يشتغل", "שלב אחרון: הפעל את אלה כדי ש-Drive ייפתח תמיד והכל יעבוד", "Last step: turn these on so Drive always opens and everything works"),
         "done" to arrayOf("خلصت", "סיימתי", "Done"),
+        "trip" to arrayOf("الرحلة", "נסיעה", "Trip"),
+        "km" to arrayOf("كم", "ק\"מ", "km"),
+        "min" to arrayOf("د", "דק'", "min"),
+        "hr" to arrayOf("س", "שע'", "h"),
+        "top" to arrayOf("أعلى", "מקס'", "top"),
+        "beat" to arrayOf("الإضاءة بترقص مع الموسيقى", "התאורה רוקדת עם המוזיקה", "Lights dance with the music"),
+        "beatSub" to arrayOf("بيحتاج إذن الصوت عشان يسمع الإيقاع، وما بيسجّل ولا إشي", "דורש הרשאת אודיו כדי לשמוע את הקצב, לא מקליט כלום", "Needs audio permission to hear the beat; nothing is recorded"),
         "home" to arrayOf("الرئيسية", "בית", "Home"),
     )
 

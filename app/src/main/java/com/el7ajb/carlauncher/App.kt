@@ -1095,6 +1095,16 @@ private fun SettingsScreen(
                 }
             }
             item {
+                val prefs = remember { act.getSharedPreferences("cl", 0) }
+                var beatOn by remember { mutableStateOf(prefs.getBoolean("beat", false) && act.hasAudio()) }
+                SettingRow(Icons.Rounded.GraphicEq, S.get("beat", lang), S.get("beatSub", lang)) {
+                    Pill(S.get(if (beatOn) "on" else "off", lang)) {
+                        if (beatOn) { beatOn = false; prefs.edit().putBoolean("beat", false).apply() }
+                        else act.requestAudio { ok -> beatOn = ok; prefs.edit().putBoolean("beat", ok).apply() }
+                    }
+                }
+            }
+            item {
                 SettingRow(Icons.Rounded.Speed, S.get("perf", lang), S.get("perfSub", lang)) {
                     Row {
                         listOf("auto" to "perfAuto", "lite" to "perfLite", "full" to "perfFull").forEach { (id, key) ->

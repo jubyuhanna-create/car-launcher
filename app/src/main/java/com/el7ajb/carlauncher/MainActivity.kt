@@ -22,6 +22,7 @@ class MainActivity : BaseActivity() {
     private val locListener = object : LocationListener {
         override fun onLocationChanged(loc: Location) {
             Hub.gpsFix.value = true
+            Trip.onLocation(this@MainActivity, loc)
             Hub.speedKmh.value = if (loc.hasSpeed()) (loc.speed * 3.6f).toInt() else 0
         }
         @Deprecated("Deprecated in Java")
@@ -31,13 +32,14 @@ class MainActivity : BaseActivity() {
     }
 
     private val screenOn = object : BroadcastReceiver() {
-        override fun onReceive(c: Context?, i: Intent?) { Hub.bootTick.value++ }
+        override fun onReceive(c: Context?, i: Intent?) { Trip.onWake(this@MainActivity); Hub.bootTick.value++ }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, true)
         ContextCompat.registerReceiver(this, screenOn, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
+        Trip.load(this)
         home = HomeUi(this)
         setContentView(home.root)
         if (!getSharedPreferences("cl", 0).getBoolean("setup", false)) openPanel("picker")

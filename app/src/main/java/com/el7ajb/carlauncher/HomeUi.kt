@@ -307,6 +307,9 @@ class HomeUi(private val act: MainActivity) {
     // views
     private lateinit var bg: BackgroundView
     private lateinit var glow: ImageView
+    private lateinit var bloom: ImageView
+    private lateinit var tripVal: TextView
+    private lateinit var tripSub: TextView
     private lateinit var carOff: ImageView
     private lateinit var carOn: ImageView
     private lateinit var refl: ImageView
@@ -430,6 +433,7 @@ class HomeUi(private val act: MainActivity) {
         accent = a
         bg.accent = a
         glow.imageTintList = ColorStateList.valueOf(a)
+        if (::bloom.isInitialized) bloom.imageTintList = ColorStateList.valueOf(a)
         (plateDot.background as? GradientDrawable)?.setColor(a)
         speed.accent = a
         (mProg.background as? GradientDrawable)?.setColor(a)
@@ -504,6 +508,14 @@ class HomeUi(private val act: MainActivity) {
         }
         page.place(glow, W * 0.18f, hf(0.655f) - hf(0.07f), (W * 0.64f).toInt(), hf(0.14f).toInt(), mirror = false)
 
+        // big soft light behind the car that pulses with the music's bass
+        bloom = ImageView(act).apply {
+            setImageBitmap(radialBitmap(256, 160)); scaleType = ImageView.ScaleType.FIT_XY
+            imageTintList = ColorStateList.valueOf(accent); alpha = 0f
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        }
+        page.place(bloom, W * 0.15f, hf(0.12f), (W * 0.70f).toInt(), hf(0.62f).toInt(), mirror = false)
+
         carLayer = FrameLayout(act)
         page.addView(carLayer, FrameLayout.LayoutParams(-1, -1))
         refl = ImageView(act).apply { scaleType = ImageView.ScaleType.FIT_XY; alpha = 0.16f }
@@ -539,6 +551,14 @@ class HomeUi(private val act: MainActivity) {
         speed = SpeedArcView(act).apply { unit = t("kmh"); accent = this@HomeUi.accent }
         val sz = hf(0.36f).toInt()
         page.place(speed, W * 0.03f, hf(0.22f), sz, sz)
+
+        // trip computer under the speedometer
+        val trip = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        tripVal = text(hf(0.03f), FG, LIGHT).apply { gravity = Gravity.CENTER }
+        tripSub = text(hf(0.019f), MUTED).apply { gravity = Gravity.CENTER; letterSpacing = 0.06f }
+        trip.addView(tripVal); trip.addView(tripSub)
+        page.place(trip, W * 0.03f, hf(0.22f) + sz + hf(0.005f), sz, hf(0.08f).toInt())
+        bindTrip(Trip.state.value)
 
         // cards
         val cw = (W * 0.20f).toInt()
@@ -999,6 +1019,7 @@ class HomeUi(private val act: MainActivity) {
         }
         heroMusicTitle.text = if (has) mTitle.text else t("t_btmusic")
         heroMusicSub.text = if (has) mArtist.text else t("tapMusic")
+        updateBeat()
         main.removeCallbacks(progRun)
         updateProgress()
         if (m?.playing == true) main.postDelayed(progRun, 1000)
@@ -1030,6 +1051,7 @@ class HomeUi(private val act: MainActivity) {
                 var lastId = Hub.notif.value?.id ?: -1L
                 launch { Hub.notif.collect { n -> safe { if (n != null && n.id != lastId && ::popup.isInitialized) { lastId = n.id; showPopup(n) } } } }
                 var lastBoot = Hub.bootTick.value
+                launch { Trip.state.collect { safe { if (::tripVal.isInitialized) bindTrip(it) } } }
                 launch { Hub.bootTick.collect { b -> safe { if (b != lastBoot) { lastBoot = b; if (::pager.isInitialized && pager.page != 0) pager.go(0, false); boot() } } } }
             }
         }
@@ -1059,6 +1081,88 @@ class HomeUi(private val act: MainActivity) {
         act.launchAny("com.spotify.music", "com.soundcloud.android", "com.google.android.apps.youtube.music", toastKey = "notInstalled", lang = lang)
     }
 
-    fun onPause() { breathAnim?.pause(); shineStop() }
-    fun onResume() { breathAnim?.resume(); if (!lite && ::shine.isInitialized) shineLoop() }
+    private var resumed = false
+    fun onPause() { resumed = false; stopBeat(); breathAnim?.pause(); shineStop() }
+    fun onResume() { resumed = true; breathAnim?.resume(); if (!lite && ::shine.isInitialized) shineLoop(); updateBeat() }
+
+    /* --------------------------------------------------------------- trip */
+
+    private fun bindTrip(s: Trip.State) {
+        val km = if (s.km < 10) String.format(Locale.US, "%.1f", s.km) else String.format(Locale.US, "%.0f", s.km)
+        val mins = s.sec / 60
+        val time = if (mins >= 60) "${mins / 60}${t("hr")} ${mins % 60}${t("min")}" else "$mins ${t("min")}"
+        tripVal.text = "$km ${t("km")}  ·  $time"
+        tripSub.text = "${t("trip")}  ·  ${t("top")} ${s.maxKmh}"
+    }
+
+    /* --------------------------------------------------------------- music-reactive light */
+
+    private var viz: android.media.audiofx.Visualizer? = null
+    private var level = 0f
+    private var peak = 8f
+    private var lastEnergy = 0L
+
+    private fun beatWanted(): Boolean =
+        resumed && !lite && prefs.getBoolean("beat", false) && act.hasAudio() &&
+            Hub.media.value?.playing == true && ::glow.isInitialized
+
+    fun updateBeat() = safe { if (beatWanted()) startBeat() else stopBeat() }
+
+    private fun startBeat() {
+        if (viz != null) return
+        try {
+            val v = android.media.audiofx.Visualizer(0)
+            v.enabled = false
+            val range = android.media.audiofx.Visualizer.getCaptureSizeRange()
+            v.captureSize = range[0].coerceAtLeast(128).coerceAtMost(range[1])
+            val rate = min(android.media.audiofx.Visualizer.getMaxCaptureRate(), 20000)
+            v.setDataCaptureListener(object : android.media.audiofx.Visualizer.OnDataCaptureListener {
+                override fun onWaveFormDataCapture(vz: android.media.audiofx.Visualizer?, wave: ByteArray?, rate: Int) {}
+                override fun onFftDataCapture(vz: android.media.audiofx.Visualizer?, fft: ByteArray?, rate: Int) { safe { onFft(fft) } }
+            }, rate, false, true)
+            v.enabled = true
+            viz = v
+            lastEnergy = SystemClock.elapsedRealtime()
+            breathAnim?.pause()
+        } catch (e: Throwable) {
+            CrashLog.record(act, e, fatal = false, thread = "beat")
+            viz = null
+        }
+    }
+
+    private fun stopBeat() {
+        val v = viz ?: return
+        viz = null
+        try { v.enabled = false } catch (_: Throwable) {}
+        try { v.release() } catch (_: Throwable) {}
+        level = 0f
+        if (::glow.isInitialized) { glow.scaleX = 1f; glow.scaleY = 1f; glow.alpha = 0.8f }
+        if (::bloom.isInitialized) bloom.animate().alpha(0f).setDuration(400).start()
+        if (!lite) breathAnim?.resume()
+    }
+
+    private fun onFft(fft: ByteArray?) {
+        if (fft == null || fft.size < 16) return
+        // bass energy: the first few frequency bins
+        var bass = 0f
+        val bins = min(6, fft.size / 2 - 1)
+        for (k in 1..bins) {
+            val re = fft[2 * k].toFloat(); val im = fft[2 * k + 1].toFloat()
+            bass += kotlin.math.sqrt(re * re + im * im)
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (bass > 3f) lastEnergy = now
+        if (now - lastEnergy > 4000) {
+            // the unit plays this source outside Android (e.g. some BT/radio paths): keep breathing instead
+            if (level > 0f) { level = 0f; bloom.animate().alpha(0f).setDuration(300).start(); breathAnim?.resume() }
+            return
+        }
+        breathAnim?.pause()
+        peak = maxOf(peak * 0.996f, bass, 8f)
+        val target = (bass / peak).coerceIn(0f, 1f)
+        level = if (target > level) level + (target - level) * 0.65f else level * 0.82f
+        val l = level
+        glow.animate().alpha(0.45f + 0.55f * l).scaleX(1f + 0.10f * l).scaleY(1f + 0.22f * l).setStartDelay(0).setDuration(70).start()
+        bloom.animate().alpha(0.55f * l * l).setStartDelay(0).setDuration(70).start()
+    }
 }

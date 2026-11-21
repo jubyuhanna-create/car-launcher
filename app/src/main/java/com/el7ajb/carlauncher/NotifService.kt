@@ -42,6 +42,7 @@ class NotifService : NotificationListenerService() {
             // a jump between them means the car was just switched on again.
             val gap = android.os.SystemClock.elapsedRealtime() - android.os.SystemClock.uptimeMillis()
             if (sleepRef != 0L && gap - sleepRef > 15_000L) {
+                Trip.onWake(this@NotifService)
                 Hub.bootTick.value++
                 Launch.front(this@NotifService, delayMs = 700)
             }

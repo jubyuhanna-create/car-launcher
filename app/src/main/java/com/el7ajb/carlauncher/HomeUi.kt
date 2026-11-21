@@ -360,7 +360,7 @@ class HomeUi(private val act: MainActivity) {
     init {
         root.setBackgroundColor(0xFF030405.toInt())
         root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or_, ob ->
-            if (r - l != or_ - ol || b - t != ob - ot) main.post { build(force = true) }
+            if (r - l != or_ - ol || b - t != ob - ot) main.post { safe { build(force = true) } }
         }
     }
 
@@ -394,7 +394,9 @@ class HomeUi(private val act: MainActivity) {
 
     /* --------------------------------------------------------------- state from prefs */
 
-    fun refresh() {
+    fun refresh() = safe { refreshInner() }
+
+    private fun refreshInner() {
         lang = Lang.values().firstOrNull { it.code == prefs.getString("lang", null) } ?: run {
             when (Locale.getDefault().language) { "iw", "he" -> Lang.HE; "en" -> Lang.EN; else -> Lang.AR }
         }
@@ -843,6 +845,7 @@ class HomeUi(private val act: MainActivity) {
                 arrayOf(off, on, refl, mask)
             }
             val off = r[0] ?: return@launch
+            if (off.isRecycled) return@launch
             carBmp = off
             carOff.setImageBitmap(off); carOn.setImageBitmap(r[1]); refl.setImageBitmap(r[2])
             shine.mask = r[3]
@@ -988,9 +991,9 @@ class HomeUi(private val act: MainActivity) {
             }
             if (theme == "music") {
                 act.lifecycleScope.launch {
-                    val c = withContext(Dispatchers.Default) { paletteGlow(art) }
+                    val c = withContext(Dispatchers.Default) { try { paletteGlow(art) } catch (_: Throwable) { null } }
                     musicGlow = c?.toArgbInt()
-                    updateAccent()
+                    safe { updateAccent() }
                 }
             }
         }
@@ -1019,17 +1022,21 @@ class HomeUi(private val act: MainActivity) {
         bound = true
         act.lifecycleScope.launch {
             act.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch { Hub.media.collect { if (::mTitle.isInitialized) bindMedia(it) } }
-                launch { Hub.nav.collect { if (::nTitle.isInitialized) bindNav(it) } }
-                launch { Hub.speedKmh.collect { if (::speed.isInitialized) speed.setSpeed(it ?: 0) } }
-                launch { Hub.gpsFix.collect { refreshDots() } }
-                launch { Hub.listenerConnected.collect { refreshDots() } }
+                launch { Hub.media.collect { safe { if (::mTitle.isInitialized) bindMedia(it) } } }
+                launch { Hub.nav.collect { safe { if (::nTitle.isInitialized) bindNav(it) } } }
+                launch { Hub.speedKmh.collect { safe { if (::speed.isInitialized) speed.setSpeed(it ?: 0) } } }
+                launch { Hub.gpsFix.collect { safe { refreshDots() } } }
+                launch { Hub.listenerConnected.collect { safe { refreshDots() } } }
                 var lastId = Hub.notif.value?.id ?: -1L
-                launch { Hub.notif.collect { n -> if (n != null && n.id != lastId && ::popup.isInitialized) { lastId = n.id; showPopup(n) } } }
+                launch { Hub.notif.collect { n -> safe { if (n != null && n.id != lastId && ::popup.isInitialized) { lastId = n.id; showPopup(n) } } } }
                 var lastBoot = Hub.bootTick.value
-                launch { Hub.bootTick.collect { b -> if (b != lastBoot) { lastBoot = b; if (::pager.isInitialized && pager.page != 0) pager.go(0, false); boot() } } }
+                launch { Hub.bootTick.collect { b -> safe { if (b != lastBoot) { lastBoot = b; if (::pager.isInitialized && pager.page != 0) pager.go(0, false); boot() } } } }
             }
         }
+    }
+
+    private inline fun safe(block: () -> Unit) {
+        try { block() } catch (e: Throwable) { CrashLog.record(act, e, fatal = false, thread = "home") }
     }
 
     /* --------------------------------------------------------------- actions */

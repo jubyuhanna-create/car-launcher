@@ -88,7 +88,9 @@ class NotifService : NotificationListenerService() {
         push()
     }
 
-    private fun push() {
+    private fun push() = try { pushInner() } catch (e: Throwable) { CrashLog.record(this, e, fatal = false, thread = "media") }
+
+    private fun pushInner() {
         val c = current
         if (c == null) { Hub.media.value = null; return }
         val md = c.metadata
@@ -96,7 +98,8 @@ class NotifService : NotificationListenerService() {
         val art: Bitmap? = try {
             (md?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                 ?: md?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                ?: md?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON))?.scaledMax(320)
+                ?: md?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON))
+                ?.takeIf { !it.isRecycled }?.let { b -> b.scaledMax(320).let { s -> if (s === b) b.copy(Bitmap.Config.ARGB_8888, false) else s } }
         } catch (_: Throwable) { null }
         Hub.media.value = Hub.Media(
             title = md?.getString(MediaMetadata.METADATA_KEY_TITLE)
@@ -119,7 +122,7 @@ class NotifService : NotificationListenerService() {
         try {
             if (handleNav(sbn)) return
             handlePopup(sbn)
-        } catch (_: Throwable) {}
+        } catch (e: Throwable) { CrashLog.record(this, e, fatal = false, thread = "notif") }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {

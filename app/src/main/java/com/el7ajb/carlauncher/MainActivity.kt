@@ -33,6 +33,7 @@ class MainActivity : BaseActivity() {
         home = HomeUi(this)
         setContentView(home.root)
         if (!getSharedPreferences("cl", 0).getBoolean("setup", false)) openPanel("picker")
+        CrashLog.take(this)?.let { showCrash(it) }
         if (hasLocation()) startGps()
     }
 
@@ -60,6 +61,20 @@ class MainActivity : BaseActivity() {
     override fun onBackPressed() { /* home screen: nothing to go back to */ }
 
     override fun onLocationGranted() { startGps() }
+
+    private fun showCrash(txt: String) {
+        try {
+            val tv = android.widget.TextView(this).apply {
+                text = txt; textSize = 11f; setTextIsSelectable(true); setPadding(32, 24, 32, 24)
+                setTextColor(0xFFECEEF0.toInt()); typeface = android.graphics.Typeface.MONOSPACE
+            }
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Drive: last error / آخر خطأ")
+                .setView(android.widget.ScrollView(this).apply { addView(tv) })
+                .setPositiveButton("OK", null)
+                .show()
+        } catch (_: Throwable) {}
+    }
 
     fun openPanel(screen: String) {
         try {

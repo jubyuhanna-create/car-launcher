@@ -33,6 +33,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -95,6 +96,29 @@ private val CardLine = Color(0x10FFFFFF)
 private val Mint = Color(0xFF9FE1CB)
 
 private enum class Screen { Home, Picker, Apps, Settings }
+
+/** Premium press feedback: shrinks a little, springs back, and gives a light haptic tick. */
+@Composable
+private fun Modifier.press(scaleTo: Float = 0.93f, onClick: () -> Unit): Modifier {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val sc by androidx.compose.animation.core.animateFloatAsState(
+        if (pressed) scaleTo else 1f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 700f), label = "press"
+    )
+    val view = androidx.compose.ui.platform.LocalView.current
+    return this.graphicsLayer { scaleX = sc; scaleY = sc }
+        .clickable(interactionSource = src, indication = null) {
+            try { view.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) } catch (_: Throwable) {}
+            onClick()
+        }
+}
+
+private val GlassFill = Brush.verticalGradient(listOf(Color(0x14FFFFFF), Color(0x05FFFFFF)))
+private val GlassEdge = Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x0AFFFFFF)))
+
+private fun Modifier.glass(shape: androidx.compose.ui.graphics.Shape): Modifier =
+    this.clip(shape).background(GlassFill, shape).border(1.dp, GlassEdge, shape)
 
 @Composable
 private fun Modifier.tap(onClick: () -> Unit): Modifier {
@@ -393,35 +417,76 @@ private fun QuickTiles(act: MainActivity, lang: Lang, W: Dp, H: Dp, onApps: () -
     val found by produceState<Map<String, android.content.ComponentName>>(emptyMap()) {
         value = withContext(Dispatchers.IO) { VendorApps.resolveAll(act) }
     }
-    val tiles = TILES.filter { found.containsKey(it.id) }
-    Column(
-        Modifier.fillMaxSize().padding(start = W * 0.06f, end = W * 0.06f, top = H * 0.20f, bottom = H * 0.19f),
-        verticalArrangement = Arrangement.Center
-    ) {
-        val all = tiles.map { it.id to it } + listOf("__apps" to Tile("__apps", "t_apps", Icons.Rounded.Apps))
-        all.chunked(5).forEach { row ->
-            Row(Modifier.fillMaxWidth().padding(vertical = H * 0.012f), horizontalArrangement = Arrangement.spacedBy(W * 0.015f)) {
-                row.forEach { (id, t) ->
+    val media by Hub.media.collectAsState()
+    fun open(id: String) {
+        if (id == "__apps") { onApps(); return }
+        if (!VendorApps.open(act, id)) Toast.makeText(act, S.get("notInstalled", lang), Toast.LENGTH_SHORT).show()
+    }
+    val small = TILES.filter { it.id != "phone" && it.id != "btmusic" && found.containsKey(it.id) } +
+        Tile("__apps", "t_apps", Icons.Rounded.Apps)
+
+    Column(Modifier.fillMaxSize().padding(start = W * 0.05f, end = W * 0.05f, top = H * 0.17f, bottom = H * 0.19f)) {
+        // hero row
+        Row(Modifier.fillMaxWidth().weight(1.15f), horizontalArrangement = Arrangement.spacedBy(W * 0.015f)) {
+            HeroTile(Modifier.weight(1f), Icons.Rounded.Bluetooth, S.get("t_phone", lang), S.get("bluetoothSub", lang), null, H) { open("phone") }
+            val m = media
+            val playing = m != null && m.title.isNotBlank()
+            HeroTile(
+                Modifier.weight(1f), if (playing) Icons.Rounded.GraphicEq else Icons.Rounded.BluetoothAudio,
+                if (playing) m!!.title else S.get("t_btmusic", lang),
+                if (playing) m!!.artist else S.get("tapMusic", lang),
+                m?.art, H
+            ) {
+                val pkg = m?.pkg.orEmpty()
+                if (!(pkg.isNotBlank() && act.launchAny(pkg))) { if (!VendorApps.open(act, "btmusic")) open("music") }
+            }
+        }
+        Spacer(Modifier.height(H * 0.022f))
+        // grid
+        val rows = small.chunked(6)
+        rows.forEach { row ->
+            Row(Modifier.fillMaxWidth().weight(1f).padding(bottom = H * 0.018f), horizontalArrangement = Arrangement.spacedBy(W * 0.012f)) {
+                row.forEach { t ->
                     Column(
-                        Modifier.weight(1f).height(H * 0.17f).clip(RoundedCornerShape(20.dp)).background(CardBg)
-                            .border(1.dp, CardLine, RoundedCornerShape(20.dp))
-                            .clickable {
-                                if (id == "__apps") onApps()
-                                else if (!VendorApps.open(act, id)) Toast.makeText(act, S.get("notInstalled", lang), Toast.LENGTH_SHORT).show()
-                            }
-                            .padding(10.dp),
+                        Modifier.weight(1f).fillMaxHeight().press(0.92f) { open(t.id) }.glass(RoundedCornerShape(20.dp)).padding(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                     ) {
                         Box(
-                            Modifier.size(H * 0.075f).clip(CircleShape)
-                                .background(Brush.radialGradient(listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.08f)))),
+                            Modifier.size(H * 0.068f).clip(CircleShape)
+                                .background(Brush.radialGradient(listOf(accent.copy(alpha = 0.40f), accent.copy(alpha = 0.06f)))),
                             contentAlignment = Alignment.Center
-                        ) { Icon(t.icon, null, tint = accent.mixWhite(0.55f), modifier = Modifier.size(H * 0.042f)) }
-                        Spacer(Modifier.height(H * 0.014f))
-                        Text(S.get(t.key, lang), fontSize = (H * 0.022f).sp(), color = Fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        ) { Icon(t.icon, null, tint = accent.mixWhite(0.6f), modifier = Modifier.size(H * 0.038f)) }
+                        Spacer(Modifier.height(H * 0.012f))
+                        Text(S.get(t.key, lang), fontSize = (H * 0.02f).sp(), color = Fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(6 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroTile(modifier: Modifier, icon: ImageVector, title: String, sub: String, art: android.graphics.Bitmap?, H: Dp, onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val shape = RoundedCornerShape(24.dp)
+    val img = remember(art) { art?.asImageBitmap() }
+    Box(modifier.fillMaxHeight().press(0.96f, onClick).glass(shape)) {
+        if (img != null) {
+            Image(img, null, Modifier.matchParentSize().alpha(0.45f), contentScale = ContentScale.Crop)
+            Box(Modifier.matchParentSize().background(Brush.horizontalGradient(listOf(Color(0xF0040506), Color(0x66040506)))))
+        } else {
+            Box(Modifier.matchParentSize().background(Brush.radialGradient(listOf(accent.copy(alpha = 0.22f), Color.Transparent), radius = 600f)))
+        }
+        Row(Modifier.fillMaxSize().padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(H * 0.11f).clip(CircleShape).background(Brush.radialGradient(listOf(accent.copy(alpha = 0.55f), accent.copy(alpha = 0.10f)))),
+                contentAlignment = Alignment.Center
+            ) { Icon(icon, null, tint = Color.White, modifier = Modifier.size(H * 0.055f)) }
+            Spacer(Modifier.width(18.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontSize = (H * 0.034f).sp(), color = Fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sub, fontSize = (H * 0.021f).sp(), color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -493,7 +558,15 @@ private fun SpeedBlock(lang: Lang, modifier: Modifier, H: Dp) {
 }
 
 @Composable
-private fun Card(modifier: Modifier = Modifier, onClick: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+private fun Card(modifier: Modifier = Modifier, onClick: () -> Unit, bg: (@Composable BoxScope.() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    Box(modifier.fillMaxWidth().press(0.97f, onClick).glass(shape)) {
+        bg?.invoke(this)
+        Column(Modifier.padding(16.dp), content = content)
+    }
+}
+
+@Composable ColumnScope.() -> Unit) {
     Column(
         modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CardBg)
             .border(1.dp, CardLine, RoundedCornerShape(18.dp)).tap(onClick).padding(16.dp),
@@ -510,7 +583,14 @@ private fun MediaCard(act: MainActivity, lang: Lang, H: Dp) {
         while (media?.playing == true) { now = android.os.SystemClock.elapsedRealtime(); delay(1000) }
     }
     val hasMedia = media != null && (media.title.isNotBlank() || media.artist.isNotBlank())
-    Card(onClick = {
+    val artBg = media?.art
+    val artImg = remember(artBg) { artBg?.asImageBitmap() }
+    Card(bg = {
+        if (artImg != null) {
+            Image(artImg, null, Modifier.matchParentSize().alpha(0.38f), contentScale = ContentScale.Crop)
+            Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(Color(0x99040506), Color(0xE6040506)))))
+        }
+    }, onClick = {
         if (media?.pkg?.isNotBlank() == true) act.launchAny(media.pkg, toastKey = "notInstalled", lang = lang)
         else act.launchAny("com.spotify.music", "com.soundcloud.android", "com.google.android.apps.youtube.music", "com.google.android.youtube", toastKey = "notInstalled", lang = lang)
     }) {
@@ -549,12 +629,12 @@ private fun MediaCard(act: MainActivity, lang: Lang, H: Dp) {
                     Hub.controller?.transportControls?.skipToPrevious() ?: act.mediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
                 }
                 Box(
-                    Modifier.size(H * 0.068f).clip(CircleShape).background(Fg).tap {
+                    Modifier.size(H * 0.068f).press(0.88f) {
                         val c = Hub.controller
                         if (c != null) {
                             if (c.playbackState?.state == PlaybackState.STATE_PLAYING) c.transportControls.pause() else c.transportControls.play()
                         } else act.mediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
-                    },
+                    }.clip(CircleShape).background(Fg),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(if (media?.playing == true) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = Color(0xFF040506), modifier = Modifier.size(H * 0.04f))
@@ -569,7 +649,7 @@ private fun MediaCard(act: MainActivity, lang: Lang, H: Dp) {
 
 @Composable
 private fun IconBtn(icon: ImageVector, size: Dp, onClick: () -> Unit) {
-    Box(Modifier.size(size * 1.5f).clip(CircleShape).tap(onClick), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(size * 1.5f).clip(CircleShape).press(0.85f, onClick), contentAlignment = Alignment.Center) {
         Icon(icon, null, tint = Fg2, modifier = Modifier.size(size))
     }
 }
@@ -609,8 +689,7 @@ private fun NavCard(act: MainActivity, lang: Lang, H: Dp) {
 private fun Dock(act: MainActivity, lang: Lang, H: Dp, onHome: () -> Unit, onApps: () -> Unit, onSettings: () -> Unit, modifier: Modifier) {
     val m by Hub.media.collectAsState()
     Row(
-        modifier.clip(RoundedCornerShape(50)).background(CardBg).border(1.dp, CardLine, RoundedCornerShape(50))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier.glass(RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val s = H * 0.09f
@@ -632,9 +711,14 @@ private fun Dock(act: MainActivity, lang: Lang, H: Dp, onHome: () -> Unit, onApp
 
 @Composable
 private fun DockBtn(icon: ImageVector, size: Dp, active: Boolean = false, onClick: () -> Unit) {
-    Box(Modifier.padding(horizontal = 6.dp).size(size).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+    val accent = LocalAccent.current
+    Box(
+        Modifier.padding(horizontal = 5.dp).size(size).press(0.86f, onClick).clip(CircleShape)
+            .then(if (active) Modifier.background(Brush.radialGradient(listOf(accent.copy(alpha = 0.32f), Color.Transparent))) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
         Icon(icon, null, tint = if (active) Fg else Fg2, modifier = Modifier.size(size * 0.42f))
-        if (active) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = size * 0.08f).size(5.dp).clip(CircleShape).background(LocalAccent.current))
+        if (active) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = size * 0.07f).size(5.dp).clip(CircleShape).background(accent))
     }
 }
 
@@ -976,8 +1060,7 @@ private fun SettingRow(icon: ImageVector, title: String, sub: String?, action: @
 @Composable
 private fun Pill(text: String, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(50)).border(1.dp, Color(0x40FFFFFF), RoundedCornerShape(50))
-            .clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 9.dp)
+        Modifier.press(0.92f, onClick).glass(RoundedCornerShape(50)).padding(horizontal = 20.dp, vertical = 9.dp)
     ) { Text(text, fontSize = 15.sp) }
 }
 

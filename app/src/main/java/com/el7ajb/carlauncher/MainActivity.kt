@@ -43,8 +43,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        hideBars()
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         ContextCompat.registerReceiver(this, screenOn, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
         setContent { App(this) }
         if (hasLocation()) startGps()
@@ -52,7 +51,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        hideBars()
+        Thread { VendorApps.resolveAll(this, force = true) }.start()
         if (hasLocation()) startGps()
     }
 
@@ -64,7 +63,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) hideBars()
     }
 
     private fun hideBars() {

@@ -22,7 +22,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
@@ -240,6 +243,7 @@ private fun CarView(off: ImageBitmap?, on: ImageBitmap?, lamp: Float, modifier: 
 
 /* ---------------------------------- home ---------------------------------- */
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, name: String, onApps: () -> Unit, onSettings: () -> Unit) {
     val (off, on) = rememberCarImages(act, car, colorK)
@@ -253,6 +257,7 @@ private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, 
     val tick by Hub.bootTick.collectAsState()
     var localBoot by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    val pager = rememberPagerState(pageCount = { 2 })
 
     LaunchedEffect(tick, localBoot, off != null) {
         if (off == null) return@LaunchedEffect
@@ -265,6 +270,7 @@ private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, 
         scope.launch { delay(2500); lampA.animateTo(1f, tween(800)) }
         scope.launch { delay(2500); hudA.animateTo(1f, tween(1100)) }
     }
+    LaunchedEffect(tick) { if (pager.currentPage != 0) pager.scrollToPage(0) }
 
     val inf = rememberInfiniteTransition(label = "ambient")
     val breath = inf.animateFloat(0.55f, 1f, infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breath")
@@ -273,27 +279,21 @@ private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, 
     BoxWithConstraints(
         Modifier.fillMaxSize().drawBehind {
             val w = size.width; val h = size.height
-            // base
             drawRect(Brush.radialGradient(listOf(Color(0xFF111316), Color(0xFF08090B), Color(0xFF030405)), Offset(w / 2f, h * 0.5f), w * 0.7f))
             val g = glowA.value
-            // big ambient glow behind the car
             drawRect(Brush.radialGradient(listOf(accent.copy(alpha = 0.20f * g), accent.copy(alpha = 0.06f * g), Color.Transparent), Offset(w / 2f, h * 0.45f), w * 0.42f))
-            // spotlight from above
             drawRect(Brush.verticalGradient(0f to accent.copy(alpha = 0.10f * g), 0.45f to Color.Transparent, endY = h * 0.6f))
-            // perspective floor grid
             val fy = h * 0.655f
-            val vp = Offset(w / 2f, h * 0.36f)
+            val vpy = h * 0.36f
             for (i in -14..14) {
                 val bx = w / 2f + i * w * 0.09f
-                val t = (fy - vp.y) / (h - vp.y)
-                val sx = vp.x + (bx - vp.x) * t
+                val t = (fy - vpy) / (h - vpy)
+                val sx = w / 2f + (bx - w / 2f) * t
                 drawLine(Color.White.copy(alpha = 0.035f * g), Offset(sx, fy), Offset(bx, h), strokeWidth = 1f)
             }
             var yy = fy; var step = h * 0.012f
             while (yy < h) { drawLine(Color.White.copy(alpha = 0.03f * g), Offset(0f, yy), Offset(w, yy), 1f); yy += step; step *= 1.45f }
-            // floor line
             drawLine(Brush.horizontalGradient(listOf(Color.Transparent, accent.copy(alpha = 0.35f * g), Color.White.copy(alpha = 0.18f), accent.copy(alpha = 0.35f * g), Color.Transparent)), Offset(0f, fy), Offset(w, fy), 1.5f)
-            // breathing under-glow
             val b = breath.value * g
             drawOval(
                 Brush.radialGradient(listOf(accent.copy(alpha = 0.55f * b), accent.copy(alpha = 0.12f * b), Color.Transparent), Offset(w / 2f, fy), w * 0.30f),
@@ -304,54 +304,125 @@ private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, 
         val W = maxWidth
         val H = maxHeight
 
-        // boot light line + greeting
-        val p = drl.value
-        if (p > 0f && p < 1f) {
-            val a = when { p < 0.2f -> p / 0.2f; p < 0.75f -> 1f; else -> (1f - p) / 0.25f }
-            Box(
-                Modifier.align(Alignment.TopCenter).offset(y = H * 0.50f)
-                    .width(W * 0.62f * (p / 0.75f).coerceAtMost(1f)).height(2.dp).alpha(a)
-                    .background(Brush.horizontalGradient(listOf(Color.Transparent, accent.mixWhite(0.7f), Color.White, accent.mixWhite(0.7f), Color.Transparent)))
-            )
-        }
-        if (greetA.value > 0.01f) {
-            Column(Modifier.align(Alignment.TopCenter).offset(y = H * 0.36f).alpha(greetA.value), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(greeting(lang), fontSize = (H * 0.055f).sp(), fontWeight = FontWeight.ExtraLight, color = Fg)
-                if (name.isNotBlank()) Text(name, fontSize = (H * 0.03f).sp(), color = accent.mixWhite(0.4f), letterSpacing = 2.sp)
-            }
-        }
-
-        // nameplate
-        Row(Modifier.align(Alignment.TopCenter).offset(y = H * 0.14f).alpha(hudA.value)) {
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(car.brand.uppercase(), fontSize = (H * 0.026f).sp(), color = Fg, letterSpacing = 6.sp)
-                    Box(Modifier.padding(horizontal = 14.dp).size(4.dp).clip(CircleShape).background(accent))
-                    Text(car.model.uppercase(), fontSize = (H * 0.026f).sp(), color = Muted, letterSpacing = 6.sp)
+        HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+            if (page == 0) {
+                Box(Modifier.fillMaxSize()) {
+                    val p = drl.value
+                    if (p > 0f && p < 1f) {
+                        val a = when { p < 0.2f -> p / 0.2f; p < 0.75f -> 1f; else -> (1f - p) / 0.25f }
+                        Box(
+                            Modifier.align(Alignment.TopCenter).offset(y = H * 0.50f)
+                                .width(W * 0.62f * (p / 0.75f).coerceAtMost(1f)).height(2.dp).alpha(a)
+                                .background(Brush.horizontalGradient(listOf(Color.Transparent, accent.mixWhite(0.7f), Color.White, accent.mixWhite(0.7f), Color.Transparent)))
+                        )
+                    }
+                    if (greetA.value > 0.01f) {
+                        Column(Modifier.align(Alignment.TopCenter).offset(y = H * 0.36f).alpha(greetA.value), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(greeting(lang), fontSize = (H * 0.055f).sp(), fontWeight = FontWeight.ExtraLight, color = Fg)
+                            if (name.isNotBlank()) Text(name, fontSize = (H * 0.03f).sp(), color = accent.mixWhite(0.4f), letterSpacing = 2.sp)
+                        }
+                    }
+                    Row(Modifier.align(Alignment.TopCenter).offset(y = H * 0.14f).alpha(hudA.value)) {
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(car.brand.uppercase(), fontSize = (H * 0.026f).sp(), color = Fg, letterSpacing = 6.sp)
+                                Box(Modifier.padding(horizontal = 14.dp).size(4.dp).clip(CircleShape).background(accent))
+                                Text(car.model.uppercase(), fontSize = (H * 0.026f).sp(), color = Muted, letterSpacing = 6.sp)
+                            }
+                        }
+                    }
+                    CarView(
+                        off, on, lampA.value,
+                        Modifier.offset(y = H * 0.20f).padding(start = W * 0.21f, end = W * 0.19f)
+                            .fillMaxWidth().height(H * 0.46f).alpha(carA.value)
+                            .tap { localBoot++ },
+                        shine = { val t = shineT.value * 11000f; if (t < 1700f && carA.value > 0.99f) t / 1700f else -1f }
+                    )
+                    Box(Modifier.fillMaxSize().alpha(hudA.value)) {
+                        SpeedArcBlock(lang, Modifier.align(Alignment.TopStart).padding(start = W * 0.03f, top = H * 0.22f), H)
+                        Column(Modifier.align(Alignment.TopEnd).padding(end = W * 0.04f, top = H * 0.25f).width(W * 0.20f)) {
+                            MediaCard(act, lang, H)
+                            Spacer(Modifier.height(H * 0.025f))
+                            NavCard(act, lang, H)
+                        }
+                    }
                 }
+            } else {
+                QuickTiles(act, lang, W, H, onApps)
             }
         }
 
-        // car
-        CarView(
-            off, on, lampA.value,
-            Modifier.offset(y = H * 0.20f).padding(start = W * 0.21f, end = W * 0.19f)
-                .fillMaxWidth().height(H * 0.46f).alpha(carA.value)
-                .tap { localBoot++ },
-            shine = { val t = shineT.value * 11000f; if (t < 1700f && carA.value > 0.99f) t / 1700f else -1f }
-        )
-
-        // HUD
+        // global HUD: clock, page dots, dock
         Box(Modifier.fillMaxSize().alpha(hudA.value)) {
             TopBar(lang, W, H)
-            SpeedArcBlock(lang, Modifier.align(Alignment.TopStart).padding(start = W * 0.03f, top = H * 0.22f), H)
-            Column(Modifier.align(Alignment.TopEnd).padding(end = W * 0.04f, top = H * 0.25f).width(W * 0.20f)) {
-                MediaCard(act, lang, H)
-                Spacer(Modifier.height(H * 0.025f))
-                NavCard(act, lang, H)
+            Row(Modifier.align(Alignment.BottomCenter).padding(bottom = H * 0.155f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(2) { i ->
+                    Box(Modifier.height(5.dp).width(if (pager.currentPage == i) 18.dp else 5.dp).clip(CircleShape)
+                        .background(if (pager.currentPage == i) accent else Color(0x40FFFFFF)))
+                }
             }
-            Dock(act, lang, H, onHome = { localBoot++ }, onApps = onApps, onSettings = onSettings,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = H * 0.04f))
+            Dock(act, lang, H,
+                onHome = { if (pager.currentPage != 0) scope.launch { pager.animateScrollToPage(0) } else localBoot++ },
+                onApps = onApps, onSettings = onSettings,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = H * 0.035f))
+        }
+    }
+}
+
+private data class Tile(val id: String, val key: String, val icon: ImageVector)
+
+private val TILES = listOf(
+    Tile("phone", "t_phone", Icons.Rounded.Bluetooth),
+    Tile("btmusic", "t_btmusic", Icons.Rounded.BluetoothAudio),
+    Tile("radio", "t_radio", Icons.Rounded.Radio),
+    Tile("music", "t_music", Icons.Rounded.MusicNote),
+    Tile("nav", "t_nav", Icons.Rounded.Navigation),
+    Tile("zlink", "t_zlink", Icons.Rounded.PhonelinkRing),
+    Tile("video", "t_video", Icons.Rounded.Movie),
+    Tile("youtube", "t_youtube", Icons.Rounded.SmartDisplay),
+    Tile("camera", "t_camera", Icons.Rounded.Videocam),
+    Tile("carset", "t_carset", Icons.Rounded.DirectionsCar),
+    Tile("dsp", "t_dsp", Icons.Rounded.GraphicEq),
+    Tile("fan", "t_fan", Icons.Rounded.AcUnit),
+    Tile("files", "t_files", Icons.Rounded.Folder),
+)
+
+@Composable
+private fun QuickTiles(act: MainActivity, lang: Lang, W: Dp, H: Dp, onApps: () -> Unit) {
+    val accent = LocalAccent.current
+    val found by produceState<Map<String, android.content.ComponentName>>(emptyMap()) {
+        value = withContext(Dispatchers.IO) { VendorApps.resolveAll(act) }
+    }
+    val tiles = TILES.filter { found.containsKey(it.id) }
+    Column(
+        Modifier.fillMaxSize().padding(start = W * 0.06f, end = W * 0.06f, top = H * 0.20f, bottom = H * 0.19f),
+        verticalArrangement = Arrangement.Center
+    ) {
+        val all = tiles.map { it.id to it } + listOf("__apps" to Tile("__apps", "t_apps", Icons.Rounded.Apps))
+        all.chunked(5).forEach { row ->
+            Row(Modifier.fillMaxWidth().padding(vertical = H * 0.012f), horizontalArrangement = Arrangement.spacedBy(W * 0.015f)) {
+                row.forEach { (id, t) ->
+                    Column(
+                        Modifier.weight(1f).height(H * 0.17f).clip(RoundedCornerShape(20.dp)).background(CardBg)
+                            .border(1.dp, CardLine, RoundedCornerShape(20.dp))
+                            .clickable {
+                                if (id == "__apps") onApps()
+                                else if (!VendorApps.open(act, id)) Toast.makeText(act, S.get("notInstalled", lang), Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            Modifier.size(H * 0.075f).clip(CircleShape)
+                                .background(Brush.radialGradient(listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.08f)))),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(t.icon, null, tint = accent.mixWhite(0.55f), modifier = Modifier.size(H * 0.042f)) }
+                        Spacer(Modifier.height(H * 0.014f))
+                        Text(S.get(t.key, lang), fontSize = (H * 0.022f).sp(), color = Fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
         }
     }
 }
@@ -539,18 +610,22 @@ private fun Dock(act: MainActivity, lang: Lang, H: Dp, onHome: () -> Unit, onApp
     val m by Hub.media.collectAsState()
     Row(
         modifier.clip(RoundedCornerShape(50)).background(CardBg).border(1.dp, CardLine, RoundedCornerShape(50))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val s = H * 0.085f
+        val s = H * 0.09f
+        fun nope() = Toast.makeText(act, S.get("notInstalled", lang), Toast.LENGTH_SHORT).show()
         DockBtn(Icons.Rounded.Navigation, s) { act.launchAny("com.waze", "com.google.android.apps.maps", toastKey = "notInstalled", lang = lang) }
+        DockBtn(Icons.Rounded.Bluetooth, s) { if (!VendorApps.open(act, "phone")) act.openDialer() }
         DockBtn(Icons.Rounded.MusicNote, s) {
             val pkg = m?.pkg.orEmpty()
-            act.launchAny(pkg, "com.spotify.music", "com.soundcloud.android", "com.google.android.apps.youtube.music", toastKey = "notInstalled", lang = lang)
+            if (pkg.isNotBlank() && act.launchAny(pkg)) return@DockBtn
+            if (VendorApps.open(act, "btmusic") || VendorApps.open(act, "music")) return@DockBtn
+            act.launchAny("com.spotify.music", "com.soundcloud.android", toastKey = "notInstalled", lang = lang)
         }
         DockBtn(Icons.Rounded.DirectionsCar, s, active = true, onClick = onHome)
+        DockBtn(Icons.Rounded.Radio, s) { if (!VendorApps.open(act, "radio")) nope() }
         DockBtn(Icons.Rounded.Apps, s, onClick = onApps)
-        DockBtn(Icons.Rounded.Phone, s) { act.openDialer() }
         DockBtn(Icons.Rounded.Tune, s, onClick = onSettings)
     }
 }
@@ -790,6 +865,16 @@ private fun SettingsScreen(
                             ) { Text(l.label, color = if (sel) Color(0xFF040506) else Fg, fontSize = 15.sp) }
                         }
                     }
+                }
+            }
+            item {
+                SettingRow(Icons.Rounded.Bluetooth, S.get("bluetooth", lang), S.get("bluetoothSub", lang)) {
+                    Pill(S.get("open", lang)) { if (!VendorApps.open(act, "phone")) act.tryStart(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)) }
+                }
+            }
+            item {
+                SettingRow(Icons.Rounded.CarRepair, S.get("t_carset", lang), null) {
+                    Pill(S.get("open", lang)) { if (!VendorApps.open(act, "carset")) act.openAndroidSettings() }
                 }
             }
             item {

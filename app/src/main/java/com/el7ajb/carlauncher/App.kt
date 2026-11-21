@@ -566,14 +566,6 @@ private fun Card(modifier: Modifier = Modifier, onClick: () -> Unit, bg: (@Compo
     }
 }
 
-@Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CardBg)
-            .border(1.dp, CardLine, RoundedCornerShape(18.dp)).tap(onClick).padding(16.dp),
-        content = content
-    )
-}
-
 @Composable
 private fun MediaCard(act: MainActivity, lang: Lang, H: Dp) {
     val m by Hub.media.collectAsState()

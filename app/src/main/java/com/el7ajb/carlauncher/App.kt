@@ -56,6 +56,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
@@ -145,6 +146,8 @@ fun App(act: MainActivity) {
     var screen by remember { mutableStateOf(if (prefs.getBoolean("setup", false)) Screen.Home else Screen.Picker) }
     var theme by remember { mutableStateOf(prefs.getString("theme", "car") ?: "car") }
     var name by remember { mutableStateOf(prefs.getString("name", "") ?: "") }
+    var perf by remember { mutableStateOf(prefs.getString("perf", "auto") ?: "auto") }
+    val lite = when (perf) { "lite" -> true; "full" -> false; else -> act.isWeakDevice() }
     val car = cars.firstOrNull { it.id == carId } ?: cars.firstOrNull()
     val carCol = car?.colors?.firstOrNull { it.k == colorK } ?: car?.colors?.firstOrNull()
     val media by Hub.media.collectAsState()
@@ -175,7 +178,7 @@ fun App(act: MainActivity) {
                 } else when (screen) {
                     Screen.Home -> {
                         BackHandler { /* home screen: back does nothing */ }
-                        HomeScreen(act, lang, car, colorK, name,
+                        HomeScreen(act, lang, car, colorK, name, lite,
                         onApps = { screen = Screen.Apps },
                         onSettings = { screen = Screen.Settings })
                     }
@@ -190,7 +193,8 @@ fun App(act: MainActivity) {
                         },
                         onBack = { screen = Screen.Settings })
                     Screen.Apps -> AppsScreen(act, lang, onBack = { screen = Screen.Home })
-                    Screen.Settings -> SettingsScreen(act, lang, car, carGlow, theme, name,
+                    Screen.Settings -> SettingsScreen(act, lang, car, carGlow, theme, name, perf,
+                        onPerf = { perf = it; prefs.edit().putString("perf", it).apply() },
                         onTheme = { theme = it; prefs.edit().putString("theme", it).apply() },
                         onName = { name = it; prefs.edit().putString("name", it).apply() },
                         onLang = { lang = it; prefs.edit().putString("lang", it.code).apply() },
@@ -205,60 +209,77 @@ fun App(act: MainActivity) {
 
 /* ---------------------------------- car image ---------------------------------- */
 
+private class CarImgs(val off: ImageBitmap?, val on: ImageBitmap?, val refl: ImageBitmap?)
+
+private fun shrink(b: Bitmap?, maxW: Int): Bitmap? {
+    b ?: return null
+    if (b.width <= maxW) return b
+    val h = (b.height * maxW.toFloat() / b.width).toInt().coerceAtLeast(1)
+    return Bitmap.createScaledBitmap(b, maxW, h, true)
+}
+
+/** Mirror + fade the car once, so the reflection costs nothing while drawing. */
+private fun bakeReflection(src: Bitmap): Bitmap? = try {
+    val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(out)
+    val m = android.graphics.Matrix().apply { setScale(1f, -1f); postTranslate(0f, src.height.toFloat()) }
+    c.drawBitmap(src, m, null)
+    val p = android.graphics.Paint().apply {
+        shader = android.graphics.LinearGradient(0f, 0f, 0f, src.height * 0.38f,
+            android.graphics.Color.BLACK, android.graphics.Color.TRANSPARENT, android.graphics.Shader.TileMode.CLAMP)
+        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+    }
+    c.drawRect(0f, 0f, src.width.toFloat(), src.height.toFloat(), p)
+    out
+} catch (_: Throwable) { null }
+
 @Composable
-private fun rememberCarImages(act: MainActivity, car: Car, k: String): Pair<ImageBitmap?, ImageBitmap?> {
-    val st = produceState<Pair<ImageBitmap?, ImageBitmap?>>(null to null, car.id, k) {
+private fun rememberCarImages(act: MainActivity, car: Car, k: String, maxW: Int = 760): CarImgs {
+    val st = produceState(CarImgs(null, null, null), car.id, k) {
         value = withContext(Dispatchers.IO) {
             val key = if (car.colors.any { it.k == k }) k else car.colors.first().k
-            val off = CarRepo.bitmap(act, car, key + "_off")
-            val on = CarRepo.bitmap(act, car, key + "_on") ?: off
-            off?.asImageBitmap() to on?.asImageBitmap()
+            val off = shrink(CarRepo.bitmap(act, car, key + "_off"), maxW)
+            val on = shrink(CarRepo.bitmap(act, car, key + "_on"), maxW) ?: off
+            val refl = off?.let { bakeReflection(it) }
+            CarImgs(off?.asImageBitmap(), on?.asImageBitmap(), refl?.asImageBitmap())
         }
     }
     return st.value
 }
 
 @Composable
-private fun CarView(off: ImageBitmap?, on: ImageBitmap?, lamp: Float, modifier: Modifier = Modifier, shine: (() -> Float)? = null) {
+private fun CarView(imgs: CarImgs, lamp: Float, modifier: Modifier = Modifier, shine: (() -> Float)? = null) {
+    val off = imgs.off
+    val on = imgs.on
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(modifier) {
             if (off != null) {
-                Image(
-                    off, null,
-                    Modifier.fillMaxSize()
-                        .graphicsLayer {
-                            scaleY = -1f
-                            translationY = size.height * 0.93f
-                            alpha = 0.14f
-                            compositingStrategy = CompositingStrategy.Offscreen
-                        }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(Brush.verticalGradient(0.62f to Color.Transparent, 1f to Color.Black), blendMode = BlendMode.DstIn)
-                        },
-                    alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit
+                val refl = imgs.refl
+                if (refl != null) Image(
+                    refl, null,
+                    Modifier.fillMaxSize().graphicsLayer { translationY = size.height * 0.93f },
+                    alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit, alpha = 0.16f
                 )
-                Box(
-                    Modifier.fillMaxSize()
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            val p = shine?.invoke() ?: -1f
-                            if (p in 0f..1f) {
-                                val x = -0.3f * size.width + p * 1.6f * size.width
-                                drawRect(
-                                    Brush.linearGradient(
-                                        0f to Color.Transparent, 0.5f to Color.White.copy(alpha = 0.28f), 1f to Color.Transparent,
-                                        start = Offset(x - size.width * 0.10f, 0f), end = Offset(x + size.width * 0.10f, size.height * 0.6f)
-                                    ),
-                                    blendMode = BlendMode.SrcAtop
-                                )
-                            }
+                val carMod = if (shine == null) Modifier.fillMaxSize() else Modifier.fillMaxSize()
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        val p = shine()
+                        if (p in 0f..1f) {
+                            val x = -0.3f * size.width + p * 1.6f * size.width
+                            drawRect(
+                                Brush.linearGradient(
+                                    0f to Color.Transparent, 0.5f to Color.White.copy(alpha = 0.28f), 1f to Color.Transparent,
+                                    start = Offset(x - size.width * 0.10f, 0f), end = Offset(x + size.width * 0.10f, size.height * 0.6f)
+                                ),
+                                blendMode = BlendMode.SrcAtop
+                            )
                         }
-                ) {
+                    }
+                Box(carMod) {
                     Image(off, null, Modifier.fillMaxSize(), alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit)
                     if (on != null && lamp > 0.01f)
-                        Image(on, null, Modifier.fillMaxSize().alpha(lamp), alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit)
+                        Image(on, null, Modifier.fillMaxSize(), alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit, alpha = lamp)
                 }
             }
         }
@@ -269,8 +290,9 @@ private fun CarView(off: ImageBitmap?, on: ImageBitmap?, lamp: Float, modifier: 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, name: String, onApps: () -> Unit, onSettings: () -> Unit) {
-    val (off, on) = rememberCarImages(act, car, colorK)
+private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, name: String, lite: Boolean, onApps: () -> Unit, onSettings: () -> Unit) {
+    val imgs = rememberCarImages(act, car, colorK, if (lite) 640 else 760)
+    val off = imgs.off
     val accent = LocalAccent.current
     val drl = remember { Animatable(0f) }
     val greetA = remember { Animatable(0f) }
@@ -285,44 +307,71 @@ private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, 
 
     LaunchedEffect(tick, localBoot, off != null) {
         if (off == null) return@LaunchedEffect
-        drl.snapTo(0f); greetA.snapTo(0f); carA.snapTo(0f); lampA.snapTo(0f); glowA.snapTo(0f)
+        drl.snapTo(0f); greetA.snapTo(0f); carA.snapTo(0f); lampA.snapTo(0f)
         if (hudA.value < 1f) hudA.snapTo(0f)
-        scope.launch { delay(150); greetA.animateTo(1f, tween(700)); delay(900); greetA.animateTo(0f, tween(600)) }
-        scope.launch { delay(250); drl.animateTo(1f, tween(1500, easing = FastOutSlowInEasing)) }
-        scope.launch { delay(1500); carA.animateTo(1f, tween(1400)) }
-        scope.launch { delay(1700); glowA.animateTo(1f, tween(1600)) }
-        scope.launch { delay(2500); lampA.animateTo(1f, tween(800)) }
-        scope.launch { delay(2500); hudA.animateTo(1f, tween(1100)) }
+        if (lite) {
+            glowA.snapTo(1f)
+            scope.launch { greetA.animateTo(1f, tween(350)); delay(650); greetA.animateTo(0f, tween(300)) }
+            scope.launch { drl.animateTo(1f, tween(900, easing = LinearEasing)) }
+            scope.launch { delay(700); carA.animateTo(1f, tween(500)) }
+            scope.launch { delay(1100); lampA.snapTo(1f) }
+            scope.launch { delay(900); hudA.animateTo(1f, tween(400)) }
+        } else {
+            glowA.snapTo(0f)
+            scope.launch { delay(150); greetA.animateTo(1f, tween(700)); delay(900); greetA.animateTo(0f, tween(600)) }
+            scope.launch { delay(250); drl.animateTo(1f, tween(1500, easing = FastOutSlowInEasing)) }
+            scope.launch { delay(1500); carA.animateTo(1f, tween(1400)) }
+            scope.launch { delay(1700); glowA.animateTo(1f, tween(1600)) }
+            scope.launch { delay(2500); lampA.animateTo(1f, tween(800)) }
+            scope.launch { delay(2500); hudA.animateTo(1f, tween(1100)) }
+        }
     }
     LaunchedEffect(tick) { if (pager.currentPage != 0) pager.scrollToPage(0) }
 
-    val inf = rememberInfiniteTransition(label = "ambient")
-    val breath = inf.animateFloat(0.55f, 1f, infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breath")
-    val shineT = inf.animateFloat(0f, 1f, infiniteRepeatable(tween(11000, easing = LinearEasing)), label = "shine")
+    val breath: State<Float>
+    val shineT: State<Float>?
+    if (lite) {
+        breath = remember { mutableFloatStateOf(0.8f) }
+        shineT = null
+    } else {
+        val inf = rememberInfiniteTransition(label = "ambient")
+        breath = inf.animateFloat(0.55f, 1f, infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breath")
+        shineT = inf.animateFloat(0f, 1f, infiniteRepeatable(tween(11000, easing = LinearEasing)), label = "shine")
+    }
 
     BoxWithConstraints(
-        Modifier.fillMaxSize().drawBehind {
+        Modifier.fillMaxSize().drawWithCache {
             val w = size.width; val h = size.height
-            drawRect(Brush.radialGradient(listOf(Color(0xFF111316), Color(0xFF08090B), Color(0xFF030405)), Offset(w / 2f, h * 0.5f), w * 0.7f))
             val g = glowA.value
-            drawRect(Brush.radialGradient(listOf(accent.copy(alpha = 0.20f * g), accent.copy(alpha = 0.06f * g), Color.Transparent), Offset(w / 2f, h * 0.45f), w * 0.42f))
-            drawRect(Brush.verticalGradient(0f to accent.copy(alpha = 0.10f * g), 0.45f to Color.Transparent, endY = h * 0.6f))
+            val acc = accent
+            val base = Brush.radialGradient(listOf(Color(0xFF111316), Color(0xFF08090B), Color(0xFF030405)), Offset(w / 2f, h * 0.5f), w * 0.7f)
+            val glow = Brush.radialGradient(listOf(acc.copy(alpha = 0.20f * g), acc.copy(alpha = 0.06f * g), Color.Transparent), Offset(w / 2f, h * 0.45f), w * 0.42f)
+            val spot = Brush.verticalGradient(0f to acc.copy(alpha = 0.10f * g), 0.45f to Color.Transparent, endY = h * 0.6f)
             val fy = h * 0.655f
             val vpy = h * 0.36f
-            for (i in -14..14) {
-                val bx = w / 2f + i * w * 0.09f
-                val t = (fy - vpy) / (h - vpy)
-                val sx = w / 2f + (bx - w / 2f) * t
-                drawLine(Color.White.copy(alpha = 0.035f * g), Offset(sx, fy), Offset(bx, h), strokeWidth = 1f)
+            val grid = androidx.compose.ui.graphics.Path().apply {
+                for (i in -14..14) {
+                    val bx = w / 2f + i * w * 0.09f
+                    val t = (fy - vpy) / (h - vpy)
+                    moveTo(w / 2f + (bx - w / 2f) * t, fy); lineTo(bx, h)
+                }
+                var yy = fy; var step = h * 0.012f
+                while (yy < h) { moveTo(0f, yy); lineTo(w, yy); yy += step; step *= 1.45f }
             }
-            var yy = fy; var step = h * 0.012f
-            while (yy < h) { drawLine(Color.White.copy(alpha = 0.03f * g), Offset(0f, yy), Offset(w, yy), 1f); yy += step; step *= 1.45f }
-            drawLine(Brush.horizontalGradient(listOf(Color.Transparent, accent.copy(alpha = 0.35f * g), Color.White.copy(alpha = 0.18f), accent.copy(alpha = 0.35f * g), Color.Transparent)), Offset(0f, fy), Offset(w, fy), 1.5f)
-            val b = breath.value * g
-            drawOval(
-                Brush.radialGradient(listOf(accent.copy(alpha = 0.55f * b), accent.copy(alpha = 0.12f * b), Color.Transparent), Offset(w / 2f, fy), w * 0.30f),
-                topLeft = Offset(w * 0.18f, fy - h * 0.07f), size = androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.14f)
-            )
+            val floor = Brush.horizontalGradient(listOf(Color.Transparent, acc.copy(alpha = 0.35f * g), Color.White.copy(alpha = 0.18f), acc.copy(alpha = 0.35f * g), Color.Transparent))
+            val gridStroke = androidx.compose.ui.graphics.drawscope.Stroke(1f)
+            val gridCol = Color.White.copy(alpha = 0.035f * g)
+            onDrawBehind {
+                drawRect(base)
+                if (g > 0f) { drawRect(glow); drawRect(spot) }
+                drawPath(grid, gridCol, style = gridStroke)
+                drawLine(floor, Offset(0f, fy), Offset(w, fy), 1.5f)
+                val b = breath.value * g
+                if (b > 0f) drawOval(
+                    Brush.radialGradient(listOf(acc.copy(alpha = 0.55f * b), acc.copy(alpha = 0.12f * b), Color.Transparent), Offset(w / 2f, fy), w * 0.30f),
+                    topLeft = Offset(w * 0.18f, fy - h * 0.07f), size = androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.14f)
+                )
+            }
         }
     ) {
         val W = maxWidth
@@ -356,11 +405,11 @@ private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, 
                         }
                     }
                     CarView(
-                        off, on, lampA.value,
+                        imgs, lampA.value,
                         Modifier.offset(y = H * 0.20f).padding(start = W * 0.21f, end = W * 0.19f)
                             .fillMaxWidth().height(H * 0.46f).alpha(carA.value)
                             .tap { localBoot++ },
-                        shine = { val t = shineT.value * 11000f; if (t < 1700f && carA.value > 0.99f) t / 1700f else -1f }
+                        shine = shineT?.let { st -> { val t = st.value * 11000f; if (t < 1700f && carA.value > 0.99f) t / 1700f else -1f } }
                     )
                     Box(Modifier.fillMaxSize().alpha(hudA.value)) {
                         SpeedArcBlock(lang, Modifier.align(Alignment.TopStart).padding(start = W * 0.03f, top = H * 0.22f), H)
@@ -770,7 +819,7 @@ private fun PickerScreen(
     BackHandler(enabled = canGoBack) { onBack() }
     val scope = rememberCoroutineScope()
     val col = car.colors.firstOrNull { it.k == colorK } ?: car.colors.first()
-    val (off, on) = rememberCarImages(act, car, col.k)
+    val imgs = rememberCarImages(act, car, col.k)
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             val added = withContext(Dispatchers.IO) { CarRepo.import(act, uri) }
@@ -827,7 +876,7 @@ private fun PickerScreen(
                     }
                 }
             }
-            CarView(off, on, 1f, Modifier.weight(1f).fillMaxWidth().padding(horizontal = W * 0.14f, vertical = H * 0.03f))
+            CarView(imgs, 1f, Modifier.weight(1f).fillMaxWidth().padding(horizontal = W * 0.14f, vertical = H * 0.03f))
             Spacer(Modifier.height(H * 0.12f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 car.colors.forEach { cc ->
@@ -909,8 +958,8 @@ private fun Header(title: String, lang: Lang, onBack: () -> Unit) {
 
 @Composable
 private fun SettingsScreen(
-    act: MainActivity, lang: Lang, car: Car, carGlow: Color, theme: String, name: String,
-    onTheme: (String) -> Unit, onName: (String) -> Unit, onLang: (Lang) -> Unit, onPicker: () -> Unit, onBack: () -> Unit,
+    act: MainActivity, lang: Lang, car: Car, carGlow: Color, theme: String, name: String, perf: String,
+    onPerf: (String) -> Unit, onTheme: (String) -> Unit, onName: (String) -> Unit, onLang: (Lang) -> Unit, onPicker: () -> Unit, onBack: () -> Unit,
 ) {
     BackHandler { onBack() }
     var resume by remember { mutableIntStateOf(0) }
@@ -1015,8 +1064,35 @@ private fun SettingsScreen(
                 }
             }
             item {
+                val isDef = remember(resume) { act.isDefaultHome() }
                 SettingRow(Icons.Rounded.Home, S.get("defaultLauncher", lang), S.get("defaultLauncherSub", lang)) {
-                    Pill(S.get("open", lang)) { act.openHomeSettings() }
+                    if (isDef) OkTag(S.get("granted", lang)) else Pill(S.get("grant", lang)) { act.makeDefaultHome() }
+                }
+            }
+            item {
+                val prefs = remember { act.getSharedPreferences("cl", 0) }
+                var autoOn by remember { mutableStateOf(prefs.getBoolean("autoOpen", true)) }
+                val overlayOk = remember(resume) { act.canOverlay() }
+                SettingRow(Icons.Rounded.PowerSettingsNew, S.get("autoOpen", lang), if (overlayOk) null else S.get("autoOpenSub", lang)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (autoOn && !overlayOk) { Pill(S.get("grant", lang)) { act.requestOverlay() }; Spacer(Modifier.width(8.dp)) }
+                        Pill(S.get(if (autoOn) "on" else "off", lang)) { autoOn = !autoOn; prefs.edit().putBoolean("autoOpen", autoOn).apply() }
+                    }
+                }
+            }
+            item {
+                SettingRow(Icons.Rounded.Speed, S.get("perf", lang), S.get("perfSub", lang)) {
+                    Row {
+                        listOf("auto" to "perfAuto", "lite" to "perfLite", "full" to "perfFull").forEach { (id, key) ->
+                            val sel = id == perf
+                            Box(
+                                Modifier.padding(start = 8.dp).clip(RoundedCornerShape(50))
+                                    .background(if (sel) Fg else Color.Transparent)
+                                    .border(1.dp, if (sel) Fg else Color(0x40FFFFFF), RoundedCornerShape(50))
+                                    .clickable { onPerf(id) }.padding(horizontal = 16.dp, vertical = 9.dp)
+                            ) { Text(S.get(key, lang), color = if (sel) Color(0xFF040506) else Fg, fontSize = 15.sp) }
+                        }
+                    }
                 }
             }
             item {

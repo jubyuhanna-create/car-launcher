@@ -134,4 +134,38 @@ class MainActivity : ComponentActivity() {
     }
 
     val sdk: Int get() = Build.VERSION.SDK_INT
+
+    /** 2-4 GB / 4-core head units: use the smooth mode by default. */
+    fun isWeakDevice(): Boolean = try {
+        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+        val mi = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+        am.isLowRamDevice || mi.totalMem < 3_500_000_000L || Runtime.getRuntime().availableProcessors() <= 4
+    } catch (_: Throwable) { true }
+
+    fun canOverlay() = Launch.canOverlay(this)
+
+    fun requestOverlay() {
+        if (Build.VERSION.SDK_INT >= 23)
+            if (!tryStart(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName"))))
+                tryStart(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+    }
+
+    fun isDefaultHome(): Boolean = try {
+        val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        packageManager.resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName == packageName
+    } catch (_: Throwable) { false }
+
+    private val roleLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+
+    fun makeDefaultHome() {
+        if (Build.VERSION.SDK_INT >= 29) {
+            try {
+                val rm = getSystemService(android.app.role.RoleManager::class.java)
+                if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME) && !rm.isRoleHeld(android.app.role.RoleManager.ROLE_HOME)) {
+                    roleLauncher.launch(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_HOME)); return
+                }
+            } catch (_: Throwable) {}
+        }
+        openHomeSettings()
+    }
 }

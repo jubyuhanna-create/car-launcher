@@ -28,8 +28,23 @@ class NotifService : NotificationListenerService() {
 
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { list -> pick(list) }
 
+    private var wakeReg = false
+    private val wake = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+            Launch.front(this@NotifService, delayMs = 1200)
+        }
+    }
+
     override fun onListenerConnected() {
         Hub.listenerConnected.value = true
+        if (!wakeReg) try {
+            val f = android.content.IntentFilter().apply {
+                addAction(android.content.Intent.ACTION_SCREEN_ON)
+                addAction("android.intent.action.ACC_ON"); addAction("com.fyt.boot.ACCON"); addAction("com.ts.main.ACC_ON")
+            }
+            androidx.core.content.ContextCompat.registerReceiver(this, wake, f, androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
+            wakeReg = true
+        } catch (_: Throwable) {}
         msm = getSystemService(MEDIA_SESSION_SERVICE) as? MediaSessionManager
         try {
             msm?.addOnActiveSessionsChangedListener(sessionsListener, ComponentName(this, NotifService::class.java), main)
@@ -40,6 +55,7 @@ class NotifService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         Hub.listenerConnected.value = false
+        if (wakeReg) try { unregisterReceiver(wake); wakeReg = false } catch (_: Throwable) {}
         try { msm?.removeOnActiveSessionsChangedListener(sessionsListener) } catch (_: Throwable) {}
         try { current?.unregisterCallback(cb) } catch (_: Throwable) {}
         current = null

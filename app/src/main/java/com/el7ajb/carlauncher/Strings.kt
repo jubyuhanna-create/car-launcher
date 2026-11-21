@@ -93,6 +93,15 @@ object S {
         "bluetooth" to arrayOf("البلوتوث والهاتف", "בלוטות' וטלפון", "Bluetooth and phone"),
         "bluetoothSub" to arrayOf("وصّل تلفونك بالشاشة", "חבר את הטלפון למסך", "Connect your phone to the screen"),
         "swipeHint" to arrayOf("اسحب لتشوف كل الاختصارات", "החלק לכל הקיצורים", "Swipe for all shortcuts"),
+        "perf" to arrayOf("الأداء", "ביצועים", "Performance"),
+        "perfSub" to arrayOf("إذا الشاشة بتعلّق اختار سلس", "אם המסך נתקע בחר חלק", "If the screen lags choose Smooth"),
+        "perfAuto" to arrayOf("تلقائي", "אוטומטי", "Auto"),
+        "perfLite" to arrayOf("سلس", "חלק", "Smooth"),
+        "perfFull" to arrayOf("كل التأثيرات", "כל האפקטים", "All effects"),
+        "autoOpen" to arrayOf("افتح Drive أول ما تضوي الشاشة", "פתח את Drive כשהמסך נדלק", "Open Drive when the screen turns on"),
+        "autoOpenSub" to arrayOf("بيحتاج إذن العرض فوق التطبيقات", "דורש הרשאת הצגה מעל אפליקציות", "Needs the display over other apps permission"),
+        "on" to arrayOf("شغّال", "פעיל", "On"),
+        "off" to arrayOf("مطفي", "כבוי", "Off"),
         "home" to arrayOf("الرئيسية", "בית", "Home"),
     )
 

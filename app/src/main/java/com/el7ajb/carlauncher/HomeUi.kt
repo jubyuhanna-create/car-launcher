@@ -399,7 +399,7 @@ class HomeUi(private val act: MainActivity) {
             when (Locale.getDefault().language) { "iw", "he" -> Lang.HE; "en" -> Lang.EN; else -> Lang.AR }
         }
         val perf = prefs.getString("perf", "auto") ?: "auto"
-        lite = when (perf) { "lite" -> true; "full" -> false; else -> act.isWeakDevice() }
+        lite = perf == "lite"
         theme = prefs.getString("theme", "car") ?: "car"
         cars = CarRepo.load(act)
         val id = prefs.getString("car", "superb") ?: "superb"

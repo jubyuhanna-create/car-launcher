@@ -137,13 +137,13 @@ private fun defaultLang(): Lang = when (Locale.getDefault().language) {
 }
 
 @Composable
-fun App(act: MainActivity) {
+fun App(act: BaseActivity, start: String, onExit: () -> Unit) {
     val prefs = remember { act.getSharedPreferences("cl", 0) }
     var lang by remember { mutableStateOf(Lang.values().firstOrNull { it.code == prefs.getString("lang", null) } ?: defaultLang()) }
     var cars by remember { mutableStateOf(CarRepo.load(act)) }
     var carId by remember { mutableStateOf(prefs.getString("car", "superb") ?: "superb") }
     var colorK by remember { mutableStateOf(prefs.getString("color", "graphite") ?: "graphite") }
-    var screen by remember { mutableStateOf(if (prefs.getBoolean("setup", false)) Screen.Home else Screen.Picker) }
+    var screen by remember { mutableStateOf(when (start) { "picker" -> Screen.Picker; "apps" -> Screen.Apps; else -> Screen.Settings }) }
     var theme by remember { mutableStateOf(prefs.getString("theme", "car") ?: "car") }
     var name by remember { mutableStateOf(prefs.getString("name", "") ?: "") }
     var perf by remember { mutableStateOf(prefs.getString("perf", "auto") ?: "auto") }
@@ -176,12 +176,7 @@ fun App(act: MainActivity) {
                 if (car == null) {
                     Text("No cars", Modifier.align(Alignment.Center))
                 } else when (screen) {
-                    Screen.Home -> {
-                        BackHandler { /* home screen: back does nothing */ }
-                        HomeScreen(act, lang, car, colorK, name, lite,
-                        onApps = { screen = Screen.Apps },
-                        onSettings = { screen = Screen.Settings })
-                    }
+                    Screen.Home -> { LaunchedEffect(Unit) { onExit() } }
                     Screen.Picker -> PickerScreen(act, lang, cars, car, colorK,
                         canGoBack = prefs.getBoolean("setup", false),
                         onSelect = { id, k -> saveCar(id, k) },
@@ -189,9 +184,9 @@ fun App(act: MainActivity) {
                         onStart = {
                             prefs.edit().putBoolean("setup", true).apply()
                             Hub.bootTick.value++
-                            screen = Screen.Home
+                            onExit()
                         },
-                        onBack = { screen = Screen.Settings })
+                        onBack = { if (start == "picker") onExit() else screen = Screen.Settings })
                     Screen.Apps -> AppsScreen(act, lang, onBack = { screen = Screen.Home })
                     Screen.Settings -> SettingsScreen(act, lang, car, carGlow, theme, name, perf,
                         onPerf = { perf = it; prefs.edit().putString("perf", it).apply() },
@@ -234,7 +229,7 @@ private fun bakeReflection(src: Bitmap): Bitmap? = try {
 } catch (_: Throwable) { null }
 
 @Composable
-private fun rememberCarImages(act: MainActivity, car: Car, k: String, maxW: Int = 760): CarImgs {
+private fun rememberCarImages(act: BaseActivity, car: Car, k: String, maxW: Int = 760): CarImgs {
     val st = produceState(CarImgs(null, null, null), car.id, k) {
         value = withContext(Dispatchers.IO) {
             val key = if (car.colors.any { it.k == k }) k else car.colors.first().k
@@ -290,7 +285,7 @@ private fun CarView(imgs: CarImgs, lamp: Float, modifier: Modifier = Modifier, s
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, name: String, lite: Boolean, onApps: () -> Unit, onSettings: () -> Unit) {
+private fun HomeScreen(act: BaseActivity, lang: Lang, car: Car, colorK: String, name: String, lite: Boolean, onApps: () -> Unit, onSettings: () -> Unit) {
     val imgs = rememberCarImages(act, car, colorK, if (lite) 640 else 760)
     val off = imgs.off
     val accent = LocalAccent.current
@@ -461,7 +456,7 @@ private val TILES = listOf(
 )
 
 @Composable
-private fun QuickTiles(act: MainActivity, lang: Lang, W: Dp, H: Dp, onApps: () -> Unit) {
+private fun QuickTiles(act: BaseActivity, lang: Lang, W: Dp, H: Dp, onApps: () -> Unit) {
     val accent = LocalAccent.current
     val found by produceState<Map<String, android.content.ComponentName>>(emptyMap()) {
         value = withContext(Dispatchers.IO) { VendorApps.resolveAll(act) }
@@ -616,7 +611,7 @@ private fun Card(modifier: Modifier = Modifier, onClick: () -> Unit, bg: (@Compo
 }
 
 @Composable
-private fun MediaCard(act: MainActivity, lang: Lang, H: Dp) {
+private fun MediaCard(act: BaseActivity, lang: Lang, H: Dp) {
     val m by Hub.media.collectAsState()
     val media = m
     var now by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
@@ -696,7 +691,7 @@ private fun IconBtn(icon: ImageVector, size: Dp, onClick: () -> Unit) {
 }
 
 @Composable
-private fun NavCard(act: MainActivity, lang: Lang, H: Dp) {
+private fun NavCard(act: BaseActivity, lang: Lang, H: Dp) {
     val n by Hub.nav.collectAsState()
     val nav = n
     Card(onClick = {
@@ -727,7 +722,7 @@ private fun NavCard(act: MainActivity, lang: Lang, H: Dp) {
 }
 
 @Composable
-private fun Dock(act: MainActivity, lang: Lang, H: Dp, onHome: () -> Unit, onApps: () -> Unit, onSettings: () -> Unit, modifier: Modifier) {
+private fun Dock(act: BaseActivity, lang: Lang, H: Dp, onHome: () -> Unit, onApps: () -> Unit, onSettings: () -> Unit, modifier: Modifier) {
     val m by Hub.media.collectAsState()
     Row(
         modifier.glass(RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 6.dp),
@@ -813,7 +808,7 @@ private fun BoxScope.NotificationPopup(lang: Lang) {
 
 @Composable
 private fun PickerScreen(
-    act: MainActivity, lang: Lang, cars: List<Car>, car: Car, colorK: String, canGoBack: Boolean,
+    act: BaseActivity, lang: Lang, cars: List<Car>, car: Car, colorK: String, canGoBack: Boolean,
     onSelect: (String, String) -> Unit, onCarsChanged: () -> Unit, onStart: () -> Unit, onBack: () -> Unit,
 ) {
     BackHandler(enabled = canGoBack) { onBack() }
@@ -905,7 +900,7 @@ private fun PickerScreen(
 private data class AppItem(val label: String, val pkg: String, val icon: ImageBitmap?)
 
 @Composable
-private fun AppsScreen(act: MainActivity, lang: Lang, onBack: () -> Unit) {
+private fun AppsScreen(act: BaseActivity, lang: Lang, onBack: () -> Unit) {
     BackHandler { onBack() }
     val apps by produceState<List<AppItem>?>(null) {
         value = withContext(Dispatchers.IO) {
@@ -958,7 +953,7 @@ private fun Header(title: String, lang: Lang, onBack: () -> Unit) {
 
 @Composable
 private fun SettingsScreen(
-    act: MainActivity, lang: Lang, car: Car, carGlow: Color, theme: String, name: String, perf: String,
+    act: BaseActivity, lang: Lang, car: Car, carGlow: Color, theme: String, name: String, perf: String,
     onPerf: (String) -> Unit, onTheme: (String) -> Unit, onName: (String) -> Unit, onLang: (Lang) -> Unit, onPicker: () -> Unit, onBack: () -> Unit,
 ) {
     BackHandler { onBack() }

@@ -9,7 +9,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -19,6 +25,9 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -107,7 +116,20 @@ fun App(act: MainActivity) {
     var carId by remember { mutableStateOf(prefs.getString("car", "superb") ?: "superb") }
     var colorK by remember { mutableStateOf(prefs.getString("color", "graphite") ?: "graphite") }
     var screen by remember { mutableStateOf(if (prefs.getBoolean("setup", false)) Screen.Home else Screen.Picker) }
+    var theme by remember { mutableStateOf(prefs.getString("theme", "car") ?: "car") }
+    var name by remember { mutableStateOf(prefs.getString("name", "") ?: "") }
     val car = cars.firstOrNull { it.id == carId } ?: cars.firstOrNull()
+    val carCol = car?.colors?.firstOrNull { it.k == colorK } ?: car?.colors?.firstOrNull()
+    val media by Hub.media.collectAsState()
+    val art = media?.art
+    val musicGlow by produceState<Color?>(null, art) { value = withContext(Dispatchers.Default) { paletteGlow(art) } }
+    val carGlow = carCol?.let { glowFrom(it.hex) } ?: Color(0xFF6F8DB8)
+    val target = when (theme) {
+        "car" -> carGlow
+        "music" -> musicGlow ?: carGlow
+        else -> THEMES.firstOrNull { it.id == theme }?.color ?: carGlow
+    }
+    val accent by animateColorAsState(target, tween(1400), label = "accent")
 
     fun saveCar(id: String, k: String) {
         carId = id; colorK = k
@@ -118,6 +140,7 @@ fun App(act: MainActivity) {
         CompositionLocalProvider(
             LocalLayoutDirection provides if (lang.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
             LocalContentColor provides Fg,
+            LocalAccent provides accent,
         ) {
             Box(Modifier.fillMaxSize().background(Color(0xFF040506))) {
                 if (car == null) {
@@ -125,7 +148,7 @@ fun App(act: MainActivity) {
                 } else when (screen) {
                     Screen.Home -> {
                         BackHandler { /* home screen: back does nothing */ }
-                        HomeScreen(act, lang, car, colorK,
+                        HomeScreen(act, lang, car, colorK, name,
                         onApps = { screen = Screen.Apps },
                         onSettings = { screen = Screen.Settings })
                     }
@@ -140,7 +163,9 @@ fun App(act: MainActivity) {
                         },
                         onBack = { screen = Screen.Settings })
                     Screen.Apps -> AppsScreen(act, lang, onBack = { screen = Screen.Home })
-                    Screen.Settings -> SettingsScreen(act, lang, car,
+                    Screen.Settings -> SettingsScreen(act, lang, car, carGlow, theme, name,
+                        onTheme = { theme = it; prefs.edit().putString("theme", it).apply() },
+                        onName = { name = it; prefs.edit().putString("name", it).apply() },
                         onLang = { lang = it; prefs.edit().putString("lang", it.code).apply() },
                         onPicker = { screen = Screen.Picker },
                         onBack = { screen = Screen.Home })
@@ -167,7 +192,7 @@ private fun rememberCarImages(act: MainActivity, car: Car, k: String): Pair<Imag
 }
 
 @Composable
-private fun CarView(off: ImageBitmap?, on: ImageBitmap?, lamp: Float, modifier: Modifier = Modifier) {
+private fun CarView(off: ImageBitmap?, on: ImageBitmap?, lamp: Float, modifier: Modifier = Modifier, shine: (() -> Float)? = null) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(modifier) {
             if (off != null) {
@@ -186,9 +211,28 @@ private fun CarView(off: ImageBitmap?, on: ImageBitmap?, lamp: Float, modifier: 
                         },
                     alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit
                 )
-                Image(off, null, Modifier.fillMaxSize(), alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit)
-                if (on != null && lamp > 0.01f)
-                    Image(on, null, Modifier.fillMaxSize().alpha(lamp), alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit)
+                Box(
+                    Modifier.fillMaxSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            val p = shine?.invoke() ?: -1f
+                            if (p in 0f..1f) {
+                                val x = -0.3f * size.width + p * 1.6f * size.width
+                                drawRect(
+                                    Brush.linearGradient(
+                                        0f to Color.Transparent, 0.5f to Color.White.copy(alpha = 0.28f), 1f to Color.Transparent,
+                                        start = Offset(x - size.width * 0.10f, 0f), end = Offset(x + size.width * 0.10f, size.height * 0.6f)
+                                    ),
+                                    blendMode = BlendMode.SrcAtop
+                                )
+                            }
+                        }
+                ) {
+                    Image(off, null, Modifier.fillMaxSize(), alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit)
+                    if (on != null && lamp > 0.01f)
+                        Image(on, null, Modifier.fillMaxSize().alpha(lamp), alignment = Alignment.BottomCenter, contentScale = ContentScale.Fit)
+                }
             }
         }
     }
@@ -197,64 +241,93 @@ private fun CarView(off: ImageBitmap?, on: ImageBitmap?, lamp: Float, modifier: 
 /* ---------------------------------- home ---------------------------------- */
 
 @Composable
-private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, onApps: () -> Unit, onSettings: () -> Unit) {
+private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, name: String, onApps: () -> Unit, onSettings: () -> Unit) {
     val (off, on) = rememberCarImages(act, car, colorK)
+    val accent = LocalAccent.current
     val drl = remember { Animatable(0f) }
+    val greetA = remember { Animatable(0f) }
     val carA = remember { Animatable(0f) }
     val lampA = remember { Animatable(0f) }
     val hudA = remember { Animatable(0f) }
+    val glowA = remember { Animatable(0f) }
     val tick by Hub.bootTick.collectAsState()
     var localBoot by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(tick, localBoot, off != null) {
         if (off == null) return@LaunchedEffect
-        drl.snapTo(0f); carA.snapTo(0f); lampA.snapTo(0f)
+        drl.snapTo(0f); greetA.snapTo(0f); carA.snapTo(0f); lampA.snapTo(0f); glowA.snapTo(0f)
         if (hudA.value < 1f) hudA.snapTo(0f)
-        scope.launch { drl.animateTo(1f, tween(1400, easing = FastOutSlowInEasing)) }
-        scope.launch { delay(600); carA.animateTo(1f, tween(1500)) }
-        scope.launch { delay(1500); lampA.animateTo(1f, tween(900)) }
-        scope.launch { delay(1500); hudA.animateTo(1f, tween(1100)) }
+        scope.launch { delay(150); greetA.animateTo(1f, tween(700)); delay(900); greetA.animateTo(0f, tween(600)) }
+        scope.launch { delay(250); drl.animateTo(1f, tween(1500, easing = FastOutSlowInEasing)) }
+        scope.launch { delay(1500); carA.animateTo(1f, tween(1400)) }
+        scope.launch { delay(1700); glowA.animateTo(1f, tween(1600)) }
+        scope.launch { delay(2500); lampA.animateTo(1f, tween(800)) }
+        scope.launch { delay(2500); hudA.animateTo(1f, tween(1100)) }
     }
+
+    val inf = rememberInfiniteTransition(label = "ambient")
+    val breath = inf.animateFloat(0.55f, 1f, infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "breath")
+    val shineT = inf.animateFloat(0f, 1f, infiniteRepeatable(tween(11000, easing = LinearEasing)), label = "shine")
 
     BoxWithConstraints(
         Modifier.fillMaxSize().drawBehind {
-            drawRect(
-                Brush.radialGradient(
-                    listOf(Color(0xFF16191D), Color(0xFF0A0B0D), Color(0xFF040506)),
-                    center = Offset(size.width / 2f, size.height * 0.52f),
-                    radius = size.width * 0.62f
-                )
+            val w = size.width; val h = size.height
+            // base
+            drawRect(Brush.radialGradient(listOf(Color(0xFF111316), Color(0xFF08090B), Color(0xFF030405)), Offset(w / 2f, h * 0.5f), w * 0.7f))
+            val g = glowA.value
+            // big ambient glow behind the car
+            drawRect(Brush.radialGradient(listOf(accent.copy(alpha = 0.20f * g), accent.copy(alpha = 0.06f * g), Color.Transparent), Offset(w / 2f, h * 0.45f), w * 0.42f))
+            // spotlight from above
+            drawRect(Brush.verticalGradient(0f to accent.copy(alpha = 0.10f * g), 0.45f to Color.Transparent, endY = h * 0.6f))
+            // perspective floor grid
+            val fy = h * 0.655f
+            val vp = Offset(w / 2f, h * 0.36f)
+            for (i in -14..14) {
+                val bx = w / 2f + i * w * 0.09f
+                val t = (fy - vp.y) / (h - vp.y)
+                val sx = vp.x + (bx - vp.x) * t
+                drawLine(Color.White.copy(alpha = 0.035f * g), Offset(sx, fy), Offset(bx, h), strokeWidth = 1f)
+            }
+            var yy = fy; var step = h * 0.012f
+            while (yy < h) { drawLine(Color.White.copy(alpha = 0.03f * g), Offset(0f, yy), Offset(w, yy), 1f); yy += step; step *= 1.45f }
+            // floor line
+            drawLine(Brush.horizontalGradient(listOf(Color.Transparent, accent.copy(alpha = 0.35f * g), Color.White.copy(alpha = 0.18f), accent.copy(alpha = 0.35f * g), Color.Transparent)), Offset(0f, fy), Offset(w, fy), 1.5f)
+            // breathing under-glow
+            val b = breath.value * g
+            drawOval(
+                Brush.radialGradient(listOf(accent.copy(alpha = 0.55f * b), accent.copy(alpha = 0.12f * b), Color.Transparent), Offset(w / 2f, fy), w * 0.30f),
+                topLeft = Offset(w * 0.18f, fy - h * 0.07f), size = androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.14f)
             )
         }
     ) {
         val W = maxWidth
         val H = maxHeight
 
-        // floor line
-        Box(
-            Modifier.offset(y = H * 0.655f).fillMaxWidth().height(1.dp)
-                .background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0x1AFFFFFF), Color(0x1AFFFFFF), Color.Transparent)))
-        )
-
-        // light line of the boot animation
+        // boot light line + greeting
         val p = drl.value
         if (p > 0f && p < 1f) {
-            val a = when { p < 0.2f -> p / 0.2f; p < 0.7f -> 1f; else -> (1f - p) / 0.3f }
+            val a = when { p < 0.2f -> p / 0.2f; p < 0.75f -> 1f; else -> (1f - p) / 0.25f }
             Box(
-                Modifier.align(Alignment.TopCenter).offset(y = H * 0.47f)
-                    .width(W * 0.6f * (p / 0.7f).coerceAtMost(1f)).height(2.dp)
-                    .alpha(a).background(Color.White)
+                Modifier.align(Alignment.TopCenter).offset(y = H * 0.50f)
+                    .width(W * 0.62f * (p / 0.75f).coerceAtMost(1f)).height(2.dp).alpha(a)
+                    .background(Brush.horizontalGradient(listOf(Color.Transparent, accent.mixWhite(0.7f), Color.White, accent.mixWhite(0.7f), Color.Transparent)))
             )
+        }
+        if (greetA.value > 0.01f) {
+            Column(Modifier.align(Alignment.TopCenter).offset(y = H * 0.36f).alpha(greetA.value), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(greeting(lang), fontSize = (H * 0.055f).sp(), fontWeight = FontWeight.ExtraLight, color = Fg)
+                if (name.isNotBlank()) Text(name, fontSize = (H * 0.03f).sp(), color = accent.mixWhite(0.4f), letterSpacing = 2.sp)
+            }
         }
 
         // nameplate
         Row(Modifier.align(Alignment.TopCenter).offset(y = H * 0.14f).alpha(hudA.value)) {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Row {
-                    Text(car.brand.spaced(), fontSize = (H * 0.026f).sp(), color = Fg, letterSpacing = 6.sp)
-                    Spacer(Modifier.width(18.dp))
-                    Text(car.model.spaced(), fontSize = (H * 0.026f).sp(), color = Muted, letterSpacing = 6.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(car.brand.uppercase(), fontSize = (H * 0.026f).sp(), color = Fg, letterSpacing = 6.sp)
+                    Box(Modifier.padding(horizontal = 14.dp).size(4.dp).clip(CircleShape).background(accent))
+                    Text(car.model.uppercase(), fontSize = (H * 0.026f).sp(), color = Muted, letterSpacing = 6.sp)
                 }
             }
         }
@@ -264,13 +337,14 @@ private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, 
             off, on, lampA.value,
             Modifier.offset(y = H * 0.20f).padding(start = W * 0.21f, end = W * 0.19f)
                 .fillMaxWidth().height(H * 0.46f).alpha(carA.value)
-                .tap { localBoot++ }
+                .tap { localBoot++ },
+            shine = { val t = shineT.value * 11000f; if (t < 1700f && carA.value > 0.99f) t / 1700f else -1f }
         )
 
         // HUD
         Box(Modifier.fillMaxSize().alpha(hudA.value)) {
             TopBar(lang, W, H)
-            SpeedBlock(lang, Modifier.align(Alignment.TopStart).padding(start = W * 0.045f, top = H * 0.30f).width(W * 0.16f), H)
+            SpeedArcBlock(lang, Modifier.align(Alignment.TopStart).padding(start = W * 0.03f, top = H * 0.22f), H)
             Column(Modifier.align(Alignment.TopEnd).padding(end = W * 0.04f, top = H * 0.25f).width(W * 0.20f)) {
                 MediaCard(act, lang, H)
                 Spacer(Modifier.height(H * 0.025f))
@@ -280,6 +354,17 @@ private fun HomeScreen(act: MainActivity, lang: Lang, car: Car, colorK: String, 
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = H * 0.04f))
         }
     }
+}
+
+private fun greeting(lang: Lang): String {
+    val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    return S.get(when (h) { in 5..11 -> "gMorning"; in 12..16 -> "gNoon"; in 17..21 -> "gEvening"; else -> "gNight" }, lang)
+}
+
+@Composable
+private fun SpeedArcBlock(lang: Lang, modifier: Modifier, H: Dp) {
+    val speed by Hub.speedKmh.collectAsState()
+    SpeedArc(speed ?: 0, S.get("kmh", lang), LocalAccent.current, H * 0.36f, modifier)
 }
 
 private fun String.spaced() = this.uppercase()
@@ -317,7 +402,7 @@ private fun StatusDot(label: String, on: Boolean, H: Dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, fontSize = (H * 0.018f).sp(), color = Muted, letterSpacing = 3.sp)
             Spacer(Modifier.width(8.dp))
-            Box(Modifier.size(6.dp).clip(CircleShape).background(if (on) Mint else Color(0xFF3A3E44)))
+            Box(Modifier.size(6.dp).clip(CircleShape).background(if (on) LocalAccent.current else Color(0xFF3A3E44)))
         }
     }
 }
@@ -384,7 +469,7 @@ private fun MediaCard(act: MainActivity, lang: Lang, H: Dp) {
             (pos.toFloat() / media.duration).coerceIn(0f, 1f)
         } else 0f
         Box(Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x14FFFFFF))) {
-            Box(Modifier.fillMaxWidth(frac).fillMaxHeight().background(Fg))
+            Box(Modifier.fillMaxWidth(frac).fillMaxHeight().background(LocalAccent.current))
         }
         Spacer(Modifier.height(12.dp))
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -474,7 +559,7 @@ private fun Dock(act: MainActivity, lang: Lang, H: Dp, onHome: () -> Unit, onApp
 private fun DockBtn(icon: ImageVector, size: Dp, active: Boolean = false, onClick: () -> Unit) {
     Box(Modifier.padding(horizontal = 6.dp).size(size).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
         Icon(icon, null, tint = if (active) Fg else Fg2, modifier = Modifier.size(size * 0.42f))
-        if (active) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = size * 0.08f).size(5.dp).clip(CircleShape).background(Fg))
+        if (active) Box(Modifier.align(Alignment.BottomCenter).padding(bottom = size * 0.08f).size(5.dp).clip(CircleShape).background(LocalAccent.current))
     }
 }
 
@@ -672,7 +757,10 @@ private fun Header(title: String, lang: Lang, onBack: () -> Unit) {
 /* ---------------------------------- settings ---------------------------------- */
 
 @Composable
-private fun SettingsScreen(act: MainActivity, lang: Lang, car: Car, onLang: (Lang) -> Unit, onPicker: () -> Unit, onBack: () -> Unit) {
+private fun SettingsScreen(
+    act: MainActivity, lang: Lang, car: Car, carGlow: Color, theme: String, name: String,
+    onTheme: (String) -> Unit, onName: (String) -> Unit, onLang: (Lang) -> Unit, onPicker: () -> Unit, onBack: () -> Unit,
+) {
     BackHandler { onBack() }
     var resume by remember { mutableIntStateOf(0) }
     val owner = LocalLifecycleOwner.current
@@ -707,6 +795,52 @@ private fun SettingsScreen(act: MainActivity, lang: Lang, car: Car, onLang: (Lan
             item {
                 SettingRow(Icons.Rounded.DirectionsCar, S.get("carAndColor", lang), car.brand + " " + car.model) {
                     Pill(S.get("change", lang), onPicker)
+                }
+            }
+            item {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(CardBg).border(1.dp, CardLine, RoundedCornerShape(18.dp))
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Palette, null, tint = Fg2, modifier = Modifier.size(26.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(S.get("background", lang), fontSize = 18.sp, color = Fg)
+                            Text(S.get("backgroundSub", lang), fontSize = 14.sp, color = Muted)
+                        }
+                        Text(S.get(THEMES.firstOrNull { it.id == theme }?.key ?: "themeCar", lang), fontSize = 15.sp, color = LocalAccent.current)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(THEMES, key = { it.id }) { t ->
+                            val sel = t.id == theme
+                            val c = when (t.id) { "car" -> carGlow; "music" -> Color(0xFF9070F5); else -> t.color }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(78.dp).clickable { onTheme(t.id) }) {
+                                Box(
+                                    Modifier.size(54.dp).border(2.dp, if (sel) Fg else Color.Transparent, CircleShape).padding(5.dp).clip(CircleShape)
+                                        .background(Brush.radialGradient(listOf(c, c.copy(alpha = 0.35f), Color(0xFF0A0B0D)))),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (t.id == "car") Icon(Icons.Rounded.DirectionsCar, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                                    if (t.id == "music") Icon(Icons.Rounded.MusicNote, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(S.get(t.key, lang), fontSize = 12.sp, color = if (sel) Fg else Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                SettingRow(Icons.Rounded.Person, S.get("yourName", lang), S.get("yourNameSub", lang)) {
+                    var txt by remember { mutableStateOf(name) }
+                    BasicTextField(
+                        value = txt, onValueChange = { v -> txt = v.take(24); onName(txt) }, singleLine = true,
+                        textStyle = TextStyle(color = Fg, fontSize = 17.sp), cursorBrush = SolidColor(LocalAccent.current),
+                        modifier = Modifier.width(220.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0x40FFFFFF), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
                 }
             }
             item {

@@ -102,6 +102,10 @@ object S {
         "autoOpenSub" to arrayOf("بيحتاج إذن العرض فوق التطبيقات", "דורש הרשאת הצגה מעל אפליקציות", "Needs the display over other apps permission"),
         "on" to arrayOf("شغّال", "פעיל", "On"),
         "off" to arrayOf("مطفي", "כבוי", "Off"),
+        "guard" to arrayOf("افتح Drive دايمًا بدل الشاشة الأصلية", "פתח תמיד את Drive במקום המסך המקורי", "Always open Drive instead of the original screen"),
+        "guardSub" to arrayOf("بإعدادات إمكانية الوصول (Accessibility) فعّل \"Drive\"", "בהגדרות נגישות (Accessibility) הפעל את \"Drive\"", "In Accessibility settings turn on \"Drive\""),
+        "finishSetup" to arrayOf("خطوة أخيرة: فعّل هدول عشان Drive يفتح دايمًا وكل إشي يشتغل", "שלב אחרון: הפעל את אלה כדי ש-Drive ייפתח תמיד והכל יעבוד", "Last step: turn these on so Drive always opens and everything works"),
+        "done" to arrayOf("خلصت", "סיימתי", "Done"),
         "home" to arrayOf("الرئيسية", "בית", "Home"),
     )
 

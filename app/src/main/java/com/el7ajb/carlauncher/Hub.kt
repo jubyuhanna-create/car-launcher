@@ -44,6 +44,11 @@ object Hub {
 
     @Volatile
     var controller: MediaController? = null
+
+    @Volatile var mainResumed = false
+    @Volatile var panelOpen = false
+    @Volatile var guardConnected = false
+    @Volatile var processStart = 0L
 }
 
 fun Drawable.toBitmapSafe(size: Int): Bitmap? = try {

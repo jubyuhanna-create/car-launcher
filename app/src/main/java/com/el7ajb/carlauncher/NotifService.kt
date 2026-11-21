@@ -35,8 +35,27 @@ class NotifService : NotificationListenerService() {
         }
     }
 
+    private var sleepRef = 0L
+    private val sleepWatch = object : Runnable {
+        override fun run() {
+            // uptimeMillis stops while the unit is asleep, elapsedRealtime keeps counting:
+            // a jump between them means the car was just switched on again.
+            val gap = android.os.SystemClock.elapsedRealtime() - android.os.SystemClock.uptimeMillis()
+            if (sleepRef != 0L && gap - sleepRef > 15_000L) {
+                Hub.bootTick.value++
+                Launch.front(this@NotifService, delayMs = 700)
+            }
+            sleepRef = gap
+            main.postDelayed(this, 5000)
+        }
+    }
+
     override fun onListenerConnected() {
         Hub.listenerConnected.value = true
+        main.removeCallbacks(sleepWatch); main.post(sleepWatch)
+        // The system re-binds this service right after boot / wake: if our process has only just
+        // started, the user did not open anything yet, so show Drive.
+        if (android.os.SystemClock.uptimeMillis() - Hub.processStart < 15_000L) Launch.front(this, delayMs = 900)
         if (!wakeReg) try {
             val f = android.content.IntentFilter().apply {
                 addAction(android.content.Intent.ACTION_SCREEN_ON)
@@ -55,6 +74,7 @@ class NotifService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         Hub.listenerConnected.value = false
+        main.removeCallbacks(sleepWatch)
         if (wakeReg) try { unregisterReceiver(wake); wakeReg = false } catch (_: Throwable) {}
         try { msm?.removeOnActiveSessionsChangedListener(sessionsListener) } catch (_: Throwable) {}
         try { current?.unregisterCallback(cb) } catch (_: Throwable) {}

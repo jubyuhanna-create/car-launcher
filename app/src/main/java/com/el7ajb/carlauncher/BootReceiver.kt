@@ -18,10 +18,16 @@ object Launch {
 
     fun canOverlay(ctx: Context) = Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(ctx)
 
-    fun front(ctx: Context, delayMs: Long = 0) {
+    /**
+     * Brings Drive's home screen to the front. Without force it only does so when nothing of
+     * Drive is already showing, so it never pulls the user out of the settings panel.
+     */
+    fun front(ctx: Context, delayMs: Long = 0, force: Boolean = false) {
         if (!autoOpenEnabled(ctx)) return
         val app = ctx.applicationContext
         val run = Runnable {
+            if (!force && (Hub.mainResumed || Hub.panelOpen)) return@Runnable
+            if (force && Hub.mainResumed) return@Runnable
             try {
                 app.startActivity(
                     Intent(app, MainActivity::class.java)
@@ -32,7 +38,7 @@ object Launch {
         val h = android.os.Handler(android.os.Looper.getMainLooper())
         if (delayMs > 0) {
             h.postDelayed(run, delayMs)
-            h.postDelayed(run, delayMs + 4000) // vendor launchers often pop up late, so try once more
+            if (!force) h.postDelayed(run, delayMs + 4000) // vendor launchers often pop up late, so try once more
         } else run.run()
     }
 }

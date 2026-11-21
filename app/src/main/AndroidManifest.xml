@@ -55,6 +55,17 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+        <service
+            android:name=".HomeGuard"
+            android:label="@string/guard_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/home_guard" />
+        </service>
+
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter android:priority="999">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -65,6 +76,9 @@
                 <action android:name="com.fyt.boot.ACCON" />
                 <action android:name="com.ts.main.ACC_ON" />
                 <action android:name="com.microntek.bootcheck" />
+                <action android:name="autochips.intent.action.QB_POWERON" />
+                <action android:name="com.cayboy.action.ACC_ON" />
+                <action android:name="android.intent.action.USER_PRESENT" />
             </intent-filter>
         </receiver>
     </application>

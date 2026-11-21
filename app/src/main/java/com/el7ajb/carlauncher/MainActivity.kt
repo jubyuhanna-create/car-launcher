@@ -17,9 +17,17 @@ class MainActivity : BaseActivity() {
 
     private lateinit var home: HomeUi
     private var lm: LocationManager? = null
-    private val locListener = LocationListener { loc: Location ->
-        Hub.gpsFix.value = true
-        Hub.speedKmh.value = if (loc.hasSpeed()) (loc.speed * 3.6f).toInt() else 0
+    // All four methods must be implemented: on Android 10 and older they are abstract, and a
+    // lambda here crashes the app the first time the GPS is switched on/off.
+    private val locListener = object : LocationListener {
+        override fun onLocationChanged(loc: Location) {
+            Hub.gpsFix.value = true
+            Hub.speedKmh.value = if (loc.hasSpeed()) (loc.speed * 3.6f).toInt() else 0
+        }
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) { Hub.gpsFix.value = false }
     }
 
     private val screenOn = object : BroadcastReceiver() {
@@ -39,6 +47,7 @@ class MainActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        Hub.mainResumed = true
         home.refresh()
         home.onResume()
         Thread { VendorApps.resolveAll(this, force = true) }.start()
@@ -46,6 +55,7 @@ class MainActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        Hub.mainResumed = false
         home.onPause()
         super.onPause()
     }

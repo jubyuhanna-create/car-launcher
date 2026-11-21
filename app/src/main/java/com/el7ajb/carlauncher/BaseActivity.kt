@@ -35,6 +35,16 @@ open class BaseActivity : ComponentActivity() {
         return flat.split(":").any { it == me }
     }
 
+    fun guardEnabled(): Boolean {
+        val flat = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        val me = ComponentName(this, HomeGuard::class.java)
+        return flat.split(":").any { it.equals(me.flattenToString(), true) || it.equals(me.flattenToShortString(), true) }
+    }
+
+    fun openAccessibility() {
+        if (!tryStart(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))) openAndroidSettings()
+    }
+
     fun openNotifAccess() {
         tryStart(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
     }

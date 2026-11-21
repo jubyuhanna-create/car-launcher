@@ -11,6 +11,9 @@ class PanelActivity : BaseActivity() {
         setContent { App(this, start) { exit() } }
     }
 
+    override fun onResume() { super.onResume(); Hub.panelOpen = true }
+    override fun onPause() { Hub.panelOpen = false; super.onPause() }
+
     private fun exit() {
         finish()
         @Suppress("DEPRECATION")

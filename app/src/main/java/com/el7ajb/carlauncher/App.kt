@@ -145,6 +145,7 @@ fun App(act: BaseActivity, start: String, onExit: () -> Unit) {
     var colorK by remember { mutableStateOf(prefs.getString("color", "graphite") ?: "graphite") }
     var screen by remember { mutableStateOf(when (start) { "picker" -> Screen.Picker; "apps" -> Screen.Apps; else -> Screen.Settings }) }
     var theme by remember { mutableStateOf(prefs.getString("theme", "car") ?: "car") }
+    var onboarding by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf(prefs.getString("name", "") ?: "") }
     var perf by remember { mutableStateOf(prefs.getString("perf", "auto") ?: "auto") }
     val lite = when (perf) { "lite" -> true; "full" -> false; else -> act.isWeakDevice() }
@@ -182,13 +183,14 @@ fun App(act: BaseActivity, start: String, onExit: () -> Unit) {
                         onSelect = { id, k -> saveCar(id, k) },
                         onCarsChanged = { cars = CarRepo.load(act) },
                         onStart = {
+                            val first = !prefs.getBoolean("setup", false)
                             prefs.edit().putBoolean("setup", true).apply()
                             Hub.bootTick.value++
-                            onExit()
+                            if (first) { onboarding = true; screen = Screen.Settings } else onExit()
                         },
                         onBack = { if (start == "picker") onExit() else screen = Screen.Settings })
                     Screen.Apps -> AppsScreen(act, lang, onBack = { screen = Screen.Home })
-                    Screen.Settings -> SettingsScreen(act, lang, car, carGlow, theme, name, perf,
+                    Screen.Settings -> SettingsScreen(act, lang, car, carGlow, theme, name, perf, onboarding,
                         onPerf = { perf = it; prefs.edit().putString("perf", it).apply() },
                         onTheme = { theme = it; prefs.edit().putString("theme", it).apply() },
                         onName = { name = it; prefs.edit().putString("name", it).apply() },
@@ -953,7 +955,7 @@ private fun Header(title: String, lang: Lang, onBack: () -> Unit) {
 
 @Composable
 private fun SettingsScreen(
-    act: BaseActivity, lang: Lang, car: Car, carGlow: Color, theme: String, name: String, perf: String,
+    act: BaseActivity, lang: Lang, car: Car, carGlow: Color, theme: String, name: String, perf: String, onboarding: Boolean,
     onPerf: (String) -> Unit, onTheme: (String) -> Unit, onName: (String) -> Unit, onLang: (Lang) -> Unit, onPicker: () -> Unit, onBack: () -> Unit,
 ) {
     BackHandler { onBack() }
@@ -972,6 +974,29 @@ private fun SettingsScreen(
         Header(S.get("settings", lang), lang, onBack)
         Spacer(Modifier.height(16.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (onboarding) item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(LocalAccent.current.copy(alpha = 0.18f))
+                        .border(1.dp, LocalAccent.current.copy(alpha = 0.5f), RoundedCornerShape(18.dp)).padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(S.get("finishSetup", lang), fontSize = 17.sp, color = Fg, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(12.dp))
+                    Pill(S.get("done", lang), onBack)
+                }
+            }
+            item {
+                val isDef = remember(resume) { act.isDefaultHome() }
+                SettingRow(Icons.Rounded.Home, S.get("defaultLauncher", lang), S.get("defaultLauncherSub", lang)) {
+                    if (isDef) OkTag(S.get("granted", lang)) else Pill(S.get("grant", lang)) { act.makeDefaultHome() }
+                }
+            }
+            item {
+                val ok = remember(resume) { act.guardEnabled() }
+                SettingRow(Icons.Rounded.Verified, S.get("guard", lang), if (ok) null else S.get("guardSub", lang)) {
+                    if (ok) OkTag(S.get("granted", lang)) else Pill(S.get("grant", lang)) { act.openAccessibility() }
+                }
+            }
             item {
                 SettingRow(Icons.Rounded.Language, S.get("language", lang), null) {
                     Row {
@@ -1056,12 +1081,6 @@ private fun SettingsScreen(
             item {
                 SettingRow(Icons.Rounded.Speed, S.get("location", lang), S.get("locationSub", lang)) {
                     if (locOk) OkTag(S.get("granted", lang)) else Pill(S.get("grant", lang)) { act.requestLocation(); resume++ }
-                }
-            }
-            item {
-                val isDef = remember(resume) { act.isDefaultHome() }
-                SettingRow(Icons.Rounded.Home, S.get("defaultLauncher", lang), S.get("defaultLauncherSub", lang)) {
-                    if (isDef) OkTag(S.get("granted", lang)) else Pill(S.get("grant", lang)) { act.makeDefaultHome() }
                 }
             }
             item {

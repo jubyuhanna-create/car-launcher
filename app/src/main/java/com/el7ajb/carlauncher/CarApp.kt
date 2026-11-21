@@ -14,6 +14,7 @@ import java.util.Locale
 class CarApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        Hub.processStart = android.os.SystemClock.uptimeMillis()
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             CrashLog.record(this, e, fatal = true, thread = t.name)

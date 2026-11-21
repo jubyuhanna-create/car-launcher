@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Drive</string>
+    <string name="guard_label">Drive: always open Drive</string>
+    <string name="guard_desc">Opens Drive instead of the head unit\'s original home screen when the screen turns on or the original screen appears. Drive does not read any content on screen.</string>
 </resources>

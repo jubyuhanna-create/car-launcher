@@ -918,6 +918,7 @@ class HomeUi(private val act: MainActivity) {
         val c = car ?: return@safe
         val sp = c.spin ?: return@safe
         if (showroom != null || pager.page != 0 || W == 0) return@safe
+        if ((Hub.speedKmh.value ?: 0) > 10) { boot(); return@safe }   // no showroom while driving
         val nb = carBody
         val body = if (nb != null && carRect.width() > 0f) RectF(
             carRect.left + nb.left * carRect.width(), carRect.top + nb.top * carRect.height(),

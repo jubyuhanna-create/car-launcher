@@ -36,6 +36,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.clickable
@@ -943,6 +947,8 @@ private fun CodeSheet(act: BaseActivity, lang: Lang, onClose: () -> Unit, onInst
     var prog by remember { mutableFloatStateOf(0f) }
     var err by remember { mutableStateOf<String?>(null) }
     val accent = LocalAccent.current
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(250); try { focus.requestFocus() } catch (_: Throwable) {} }
     fun go() {
         val c = Catalog.cleanCode(code)
         if (busy) return
@@ -963,7 +969,7 @@ private fun CodeSheet(act: BaseActivity, lang: Lang, onClose: () -> Unit, onInst
         Column(
             Modifier.align(Alignment.Center).widthIn(max = 600.dp).fillMaxWidth(0.72f)
                 .clip(RoundedCornerShape(26.dp)).background(Color(0xFF0D0F12)).border(1.dp, Color(0x24FFFFFF), RoundedCornerShape(26.dp))
-                .tap { }.padding(horizontal = 30.dp, vertical = 26.dp),
+                .tap { }.verticalScroll(rememberScrollState()).padding(horizontal = 30.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(Icons.Rounded.CloudDownload, null, tint = accent, modifier = Modifier.size(34.dp))
@@ -979,7 +985,7 @@ private fun CodeSheet(act: BaseActivity, lang: Lang, onClose: () -> Unit, onInst
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrect = false, keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { go() }),
                     cursorBrush = SolidColor(accent),
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus).clip(RoundedCornerShape(16.dp))
                         .border(1.dp, if (err != null) Color(0xFFFF6B6B) else Color(0x40FFFFFF), RoundedCornerShape(16.dp))
                         .padding(vertical = 14.dp)
                 )

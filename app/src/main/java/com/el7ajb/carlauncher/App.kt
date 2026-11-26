@@ -813,7 +813,9 @@ private fun PickerScreen(
     act: BaseActivity, lang: Lang, cars: List<Car>, car: Car, colorK: String, canGoBack: Boolean,
     onSelect: (String, String) -> Unit, onCarsChanged: () -> Unit, onStart: () -> Unit, onBack: () -> Unit,
 ) {
-    BackHandler(enabled = canGoBack) { onBack() }
+    var showOnline by remember { mutableStateOf(false) }
+    BackHandler(enabled = canGoBack && !showOnline) { onBack() }
+    BackHandler(enabled = showOnline) { showOnline = false }
     val scope = rememberCoroutineScope()
     val col = car.colors.firstOrNull { it.k == colorK } ?: car.colors.first()
     val imgs = rememberCarImages(act, car, col.k)
@@ -840,6 +842,18 @@ private fun PickerScreen(
                     Text(S.get("chooseCar", lang), fontSize = (H * 0.05f).sp(), fontWeight = FontWeight.Light)
                     Text(S.get("chooseSub", lang), fontSize = (H * 0.022f).sp(), color = Muted)
                 }
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(LocalAccent.current.copy(alpha = 0.22f))
+                        .border(1.dp, LocalAccent.current.copy(alpha = 0.6f), RoundedCornerShape(50))
+                        .clickable { showOnline = true }.padding(horizontal = 22.dp, vertical = 10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.CloudDownload, null, tint = Fg, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(S.get("online", lang), fontSize = (H * 0.022f).sp())
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
                 Box(
                     Modifier.clip(RoundedCornerShape(50)).border(1.dp, Color(0x40FFFFFF), RoundedCornerShape(50))
                         .clickable { picker.launch(arrayOf("*/*")) }.padding(horizontal = 22.dp, vertical = 10.dp)
@@ -892,6 +906,95 @@ private fun PickerScreen(
                     Modifier.clip(RoundedCornerShape(50)).background(Fg).clickable(onClick = onStart)
                         .padding(horizontal = W * 0.045f, vertical = H * 0.022f)
                 ) { Text(S.get("start", lang), color = Color(0xFF040506), fontSize = (H * 0.026f).sp()) }
+            }
+        }
+        if (showOnline) OnlineCarsSheet(act, lang, cars, H,
+            onClose = { showOnline = false },
+            onInstalled = { added ->
+                onCarsChanged(); onSelect(added.id, added.colors.first().k)
+                Toast.makeText(act, S.get("carAdded", lang) + ": " + added.brand + " " + added.model, Toast.LENGTH_SHORT).show()
+            })
+    }
+}
+
+@Composable
+private fun OnlineCarsSheet(act: BaseActivity, lang: Lang, cars: List<Car>, H: Dp, onClose: () -> Unit, onInstalled: (Car) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var list by remember { mutableStateOf<List<Catalog.Entry>?>(null) }
+    var error by remember { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
+    val progress = remember { mutableStateMapOf<String, Float>() }
+    LaunchedEffect(reload) {
+        error = false; list = null
+        val r = withContext(Dispatchers.IO) { try { Catalog.fetch() } catch (_: Throwable) { null } }
+        if (r == null) error = true else list = r
+    }
+    val accent = LocalAccent.current
+    Box(Modifier.fillMaxSize().background(Color(0xE6040506)).tap(onClose)) {
+        Column(
+            Modifier.align(Alignment.Center).fillMaxWidth(0.82f).fillMaxHeight(0.84f)
+                .clip(RoundedCornerShape(26.dp)).background(Color(0xFF0D0F12)).border(1.dp, Color(0x24FFFFFF), RoundedCornerShape(26.dp))
+                .tap { }.padding(22.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.CloudDownload, null, tint = accent, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(S.get("online", lang), fontSize = 24.sp, fontWeight = FontWeight.Light)
+                    Text(S.get("onlineSub", lang), fontSize = 14.sp, color = Muted)
+                }
+                Icon(Icons.Rounded.Close, null, tint = Muted, modifier = Modifier.size(28.dp).tap(onClose))
+            }
+            Spacer(Modifier.height(16.dp))
+            val l = list
+            when {
+                error -> Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text(S.get("noNet", lang), color = Fg2, fontSize = 17.sp)
+                    Spacer(Modifier.height(14.dp))
+                    Pill(S.get("retry", lang)) { reload++ }
+                }
+                l == null -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { Text(S.get("loading", lang), color = Muted) }
+                l.isEmpty() -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { Text(S.get("noCars", lang), color = Muted) }
+                else -> LazyVerticalGrid(GridCells.Adaptive(240.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(l, key = { it.id }) { e ->
+                        val have = cars.firstOrNull { it.id == e.id }
+                        val state = when {
+                            progress.containsKey(e.id) -> "busy"
+                            have == null -> "download"
+                            !have.builtin && have.rev < e.rev -> "update"
+                            else -> "installed"
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x0AFFFFFF))
+                                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(18.dp)).padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(e.brand, fontSize = 12.sp, color = Muted, letterSpacing = 2.sp, maxLines = 1)
+                                    Text(e.model, fontSize = 18.sp, color = Fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(e.year + if (e.size > 0) "  ·  " + String.format(Locale.US, "%.1f MB", e.size / 1_048_576f) else "", fontSize = 12.sp, color = Muted)
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            when (state) {
+                                "busy" -> Text("${((progress[e.id] ?: 0f) * 100).toInt()}%", color = accent, fontSize = 16.sp)
+                                "installed" -> OkTag(S.get("installed", lang))
+                                else -> Pill(S.get(state, lang)) {
+                                    progress[e.id] = 0f
+                                    scope.launch {
+                                        val car = withContext(Dispatchers.IO) {
+                                            try { Catalog.install(act, e) { p -> scope.launch { progress[e.id] = p } } } catch (_: Throwable) { null }
+                                        }
+                                        progress.remove(e.id)
+                                        if (car == null) Toast.makeText(act, S.get("noNet", lang), Toast.LENGTH_SHORT).show()
+                                        else onInstalled(car)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

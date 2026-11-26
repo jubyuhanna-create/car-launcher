@@ -113,6 +113,14 @@ object S {
         "top" to arrayOf("أعلى", "מקס'", "top"),
         "beat" to arrayOf("الإضاءة بترقص مع الموسيقى", "התאורה רוקדת עם המוזיקה", "Lights dance with the music"),
         "beatSub" to arrayOf("بيحتاج إذن الصوت عشان يسمع الإيقاع، وما بيسجّل ولا إشي", "דורש הרשאת אודיו כדי לשמוע את הקצב, לא מקליט כלום", "Needs audio permission to hear the beat; nothing is recorded"),
+        "online" to arrayOf("سيارات أونلاين", "רכבים אונליין", "Online cars"),
+        "onlineSub" to arrayOf("كل سيارة جديدة بتنضاف هون، اختار سيارتك ونزّلها", "כל רכב חדש מתווסף כאן, בחר את שלך והורד", "New cars appear here, pick yours and download it"),
+        "download" to arrayOf("نزّل", "הורד", "Download"),
+        "installed" to arrayOf("منزّلة", "מותקן", "Installed"),
+        "update" to arrayOf("تحديث", "עדכון", "Update"),
+        "noNet" to arrayOf("ما في نت. وصّل الشاشة على الواي فاي أو الهوتسبوت", "אין אינטרנט. חבר את המסך ל-Wi-Fi או לנקודה חמה", "No internet. Connect the screen to Wi-Fi or a hotspot"),
+        "noCars" to arrayOf("لسا ما في سيارات جديدة", "אין עדיין רכבים חדשים", "No new cars yet"),
+        "retry" to arrayOf("حاول مرة ثانية", "נסה שוב", "Try again"),
         "home" to arrayOf("الرئيسية", "בית", "Home"),
     )
 

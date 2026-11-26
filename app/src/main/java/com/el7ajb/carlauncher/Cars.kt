@@ -17,6 +17,7 @@ data class Car(
     val year: String,
     val colors: List<CarColor>,
     val builtin: Boolean,
+    val rev: Int = 0,
 )
 
 object CarRepo {
@@ -27,7 +28,7 @@ object CarRepo {
             val c = arr.getJSONObject(it)
             CarColor(c.getString("k"), c.optString("n"), android.graphics.Color.parseColor(c.getString("hex")))
         }
-        Car(o.getString("id"), o.getString("brand"), o.getString("model"), o.optString("year"), cols, builtin)
+        Car(o.getString("id"), o.getString("brand"), o.getString("model"), o.optString("year"), cols, builtin, o.optInt("rev", 0))
     } catch (_: Throwable) { null }
 
     private fun userDir(ctx: Context) = File(ctx.filesDir, "cars").apply { mkdirs() }
@@ -60,9 +61,15 @@ object CarRepo {
 
     /** Imports a .carpack file (same format as the web prototype). Returns the car or null if invalid. */
     fun import(ctx: Context, uri: Uri): Car? {
+        val txt = try { ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } } catch (_: Throwable) { null } ?: return null
+        return importText(ctx, txt)
+    }
+
+    /** Installs a car pack from its JSON text (from a USB file or downloaded from the online library). */
+    fun importText(ctx: Context, txt: String, rev: Int? = null): Car? {
         return try {
-            val txt = ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return null
             val o = JSONObject(txt)
+            if (rev != null) o.put("rev", rev)
             if (o.optString("format") != "carpack-1") return null
             val id = o.getString("id").replace(Regex("[^a-zA-Z0-9_-]"), "_")
             o.put("id", id)

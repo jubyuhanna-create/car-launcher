@@ -29,6 +29,13 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.clickable
@@ -174,9 +181,7 @@ fun App(act: BaseActivity, start: String, onExit: () -> Unit) {
             LocalAccent provides accent,
         ) {
             Box(Modifier.fillMaxSize().background(Color(0xFF040506))) {
-                if (car == null) {
-                    Text("No cars", Modifier.align(Alignment.Center))
-                } else when (screen) {
+                when (screen) {
                     Screen.Home -> { LaunchedEffect(Unit) { onExit() } }
                     Screen.Picker -> PickerScreen(act, lang, cars, car, colorK,
                         canGoBack = prefs.getBoolean("setup", false),
@@ -810,15 +815,15 @@ private fun BoxScope.NotificationPopup(lang: Lang) {
 
 @Composable
 private fun PickerScreen(
-    act: BaseActivity, lang: Lang, cars: List<Car>, car: Car, colorK: String, canGoBack: Boolean,
+    act: BaseActivity, lang: Lang, cars: List<Car>, car: Car?, colorK: String, canGoBack: Boolean,
     onSelect: (String, String) -> Unit, onCarsChanged: () -> Unit, onStart: () -> Unit, onBack: () -> Unit,
 ) {
-    var showOnline by remember { mutableStateOf(false) }
-    BackHandler(enabled = canGoBack && !showOnline) { onBack() }
-    BackHandler(enabled = showOnline) { showOnline = false }
+    // a fresh screen has no car: open the code box straight away
+    var showCode by remember { mutableStateOf(cars.isEmpty()) }
+    BackHandler(enabled = canGoBack && !showCode) { onBack() }
+    BackHandler(enabled = showCode) { showCode = false }
     val scope = rememberCoroutineScope()
-    val col = car.colors.firstOrNull { it.k == colorK } ?: car.colors.first()
-    val imgs = rememberCarImages(act, car, col.k)
+    val col = car?.let { c -> c.colors.firstOrNull { it.k == colorK } ?: c.colors.first() }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             val added = withContext(Dispatchers.IO) { CarRepo.import(act, uri) }
@@ -845,12 +850,12 @@ private fun PickerScreen(
                 Box(
                     Modifier.clip(RoundedCornerShape(50)).background(LocalAccent.current.copy(alpha = 0.22f))
                         .border(1.dp, LocalAccent.current.copy(alpha = 0.6f), RoundedCornerShape(50))
-                        .clickable { showOnline = true }.padding(horizontal = 22.dp, vertical = 10.dp)
+                        .clickable { showCode = true }.padding(horizontal = 22.dp, vertical = 10.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.CloudDownload, null, tint = Fg, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(S.get("online", lang), fontSize = (H * 0.022f).sp())
+                        Text(S.get("carCode", lang), fontSize = (H * 0.022f).sp())
                     }
                 }
                 Spacer(Modifier.width(10.dp))
@@ -862,7 +867,7 @@ private fun PickerScreen(
             Spacer(Modifier.height(H * 0.035f))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(cars, key = { it.id }) { c ->
-                    val sel = c.id == car.id
+                    val sel = c.id == car?.id
                     Box(
                         Modifier.width(W * 0.17f).clip(RoundedCornerShape(16.dp))
                             .background(if (sel) Color(0x0DFFFFFF) else Color(0x05FFFFFF))
@@ -880,17 +885,29 @@ private fun PickerScreen(
                         if (!c.builtin) {
                             Icon(Icons.Rounded.Close, null, tint = Muted, modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clickable {
                                 CarRepo.delete(act, c.id); onCarsChanged()
-                                if (sel) onSelect("superb", "graphite")
+                                if (sel) CarRepo.load(act).firstOrNull().let { n -> onSelect(n?.id ?: "", n?.colors?.first()?.k ?: "") }
                                 Toast.makeText(act, S.get("carRemoved", lang), Toast.LENGTH_SHORT).show()
                             })
                         }
                     }
                 }
             }
-            CarView(imgs, 1f, Modifier.weight(1f).fillMaxWidth().padding(horizontal = W * 0.14f, vertical = H * 0.03f))
+            if (car != null && col != null) {
+                val imgs = rememberCarImages(act, car, col.k)
+                CarView(imgs, 1f, Modifier.weight(1f).fillMaxWidth().padding(horizontal = W * 0.14f, vertical = H * 0.03f))
+            } else {
+                Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Icon(Icons.Rounded.DirectionsCar, null, tint = Color(0x33FFFFFF), modifier = Modifier.size(H * 0.16f))
+                    Spacer(Modifier.height(10.dp))
+                    Text(S.get("noCarYet", lang), fontSize = (H * 0.034f).sp(), fontWeight = FontWeight.Light)
+                    Text(S.get("noCarYetSub", lang), fontSize = (H * 0.021f).sp(), color = Muted, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(18.dp))
+                    Pill(S.get("carCode", lang)) { showCode = true }
+                }
+            }
             Spacer(Modifier.height(H * 0.12f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                car.colors.forEach { cc ->
+                if (car != null && col != null) car.colors.forEach { cc ->
                     val sel = cc.k == col.k
                     Box(
                         Modifier.padding(end = 14.dp).size(H * 0.075f)
@@ -901,16 +918,17 @@ private fun PickerScreen(
                     )
                 }
                 Spacer(Modifier.width(10.dp))
-                Text(S.get(col.k, lang).let { if (it == col.k) col.n else it }, fontSize = (H * 0.024f).sp(), color = Fg2, modifier = Modifier.weight(1f))
+                Text(col?.let { c -> S.get(c.k, lang).let { if (it == c.k) c.n else it } } ?: "", fontSize = (H * 0.024f).sp(), color = Fg2, modifier = Modifier.weight(1f))
                 Box(
                     Modifier.clip(RoundedCornerShape(50)).background(Fg).clickable(onClick = onStart)
                         .padding(horizontal = W * 0.045f, vertical = H * 0.022f)
                 ) { Text(S.get("start", lang), color = Color(0xFF040506), fontSize = (H * 0.026f).sp()) }
             }
         }
-        if (showOnline) OnlineCarsSheet(act, lang, cars, H,
-            onClose = { showOnline = false },
+        if (showCode) CodeSheet(act, lang,
+            onClose = { showCode = false },
             onInstalled = { added ->
+                showCode = false
                 onCarsChanged(); onSelect(added.id, added.colors.first().k)
                 Toast.makeText(act, S.get("carAdded", lang) + ": " + added.brand + " " + added.model, Toast.LENGTH_SHORT).show()
             })
@@ -918,83 +936,67 @@ private fun PickerScreen(
 }
 
 @Composable
-private fun OnlineCarsSheet(act: BaseActivity, lang: Lang, cars: List<Car>, H: Dp, onClose: () -> Unit, onInstalled: (Car) -> Unit) {
+private fun CodeSheet(act: BaseActivity, lang: Lang, onClose: () -> Unit, onInstalled: (Car) -> Unit) {
     val scope = rememberCoroutineScope()
-    var list by remember { mutableStateOf<List<Catalog.Entry>?>(null) }
-    var error by remember { mutableStateOf(false) }
-    var reload by remember { mutableIntStateOf(0) }
-    val progress = remember { mutableStateMapOf<String, Float>() }
-    LaunchedEffect(reload) {
-        error = false; list = null
-        val r = withContext(Dispatchers.IO) { try { Catalog.fetch() } catch (_: Throwable) { null } }
-        if (r == null) error = true else list = r
-    }
+    var code by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var prog by remember { mutableFloatStateOf(0f) }
+    var err by remember { mutableStateOf<String?>(null) }
     val accent = LocalAccent.current
-    Box(Modifier.fillMaxSize().background(Color(0xE6040506)).tap(onClose)) {
-        Column(
-            Modifier.align(Alignment.Center).fillMaxWidth(0.82f).fillMaxHeight(0.84f)
-                .clip(RoundedCornerShape(26.dp)).background(Color(0xFF0D0F12)).border(1.dp, Color(0x24FFFFFF), RoundedCornerShape(26.dp))
-                .tap { }.padding(22.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.CloudDownload, null, tint = accent, modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(S.get("online", lang), fontSize = 24.sp, fontWeight = FontWeight.Light)
-                    Text(S.get("onlineSub", lang), fontSize = 14.sp, color = Muted)
-                }
-                Icon(Icons.Rounded.Close, null, tint = Muted, modifier = Modifier.size(28.dp).tap(onClose))
+    fun go() {
+        val c = Catalog.cleanCode(code)
+        if (busy) return
+        if (c.length < 4) { err = S.get("codeShort", lang); return }
+        busy = true; err = null; prog = 0f
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { Catalog.byCode(act, c) { p -> scope.launch { prog = p } } }
+            busy = false
+            when (r) {
+                is Catalog.Result.Ok -> onInstalled(r.car)
+                Catalog.Result.NotFound -> err = S.get("codeNotFound", lang)
+                Catalog.Result.BadPack -> err = S.get("invalidPack", lang)
+                Catalog.Result.Network -> err = S.get("noNet", lang)
             }
-            Spacer(Modifier.height(16.dp))
-            val l = list
-            when {
-                error -> Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Text(S.get("noNet", lang), color = Fg2, fontSize = 17.sp)
-                    Spacer(Modifier.height(14.dp))
-                    Pill(S.get("retry", lang)) { reload++ }
+        }
+    }
+    Box(Modifier.fillMaxSize().background(Color(0xE6040506)).tap { if (!busy) onClose() }) {
+        Column(
+            Modifier.align(Alignment.Center).widthIn(max = 600.dp).fillMaxWidth(0.72f)
+                .clip(RoundedCornerShape(26.dp)).background(Color(0xFF0D0F12)).border(1.dp, Color(0x24FFFFFF), RoundedCornerShape(26.dp))
+                .tap { }.padding(horizontal = 30.dp, vertical = 26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(Icons.Rounded.CloudDownload, null, tint = accent, modifier = Modifier.size(34.dp))
+            Spacer(Modifier.height(10.dp))
+            Text(S.get("carCode", lang), fontSize = 24.sp, fontWeight = FontWeight.Light)
+            Spacer(Modifier.height(4.dp))
+            Text(S.get("carCodeSub", lang), fontSize = 14.sp, color = Muted, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(20.dp))
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                BasicTextField(
+                    value = code, onValueChange = { v -> code = Catalog.cleanCode(v); err = null }, singleLine = true, enabled = !busy,
+                    textStyle = TextStyle(color = Fg, fontSize = 34.sp, letterSpacing = 8.sp, textAlign = TextAlign.Center, fontFamily = FontFamily.Monospace),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrect = false, keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { go() }),
+                    cursorBrush = SolidColor(accent),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, if (err != null) Color(0xFFFF6B6B) else Color(0x40FFFFFF), RoundedCornerShape(16.dp))
+                        .padding(vertical = 14.dp)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(err ?: " ", color = Color(0xFFFF8A8A), fontSize = 14.sp, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(10.dp))
+            if (busy) {
+                Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x1AFFFFFF))) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(prog.coerceIn(0.03f, 1f)).background(accent))
                 }
-                l == null -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { Text(S.get("loading", lang), color = Muted) }
-                l.isEmpty() -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) { Text(S.get("noCars", lang), color = Muted) }
-                else -> LazyVerticalGrid(GridCells.Adaptive(240.dp), Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(l, key = { it.id }) { e ->
-                        val have = cars.firstOrNull { it.id == e.id }
-                        val state = when {
-                            progress.containsKey(e.id) -> "busy"
-                            have == null -> "download"
-                            !have.builtin && have.rev < e.rev -> "update"
-                            else -> "installed"
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x0AFFFFFF))
-                                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(18.dp)).padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(e.brand, fontSize = 12.sp, color = Muted, letterSpacing = 2.sp, maxLines = 1)
-                                    Text(e.model, fontSize = 18.sp, color = Fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(e.year + if (e.size > 0) "  ·  " + String.format(Locale.US, "%.1f MB", e.size / 1_048_576f) else "", fontSize = 12.sp, color = Muted)
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            when (state) {
-                                "busy" -> Text("${((progress[e.id] ?: 0f) * 100).toInt()}%", color = accent, fontSize = 16.sp)
-                                "installed" -> OkTag(S.get("installed", lang))
-                                else -> Pill(S.get(state, lang)) {
-                                    progress[e.id] = 0f
-                                    scope.launch {
-                                        val car = withContext(Dispatchers.IO) {
-                                            try { Catalog.install(act, e) { p -> scope.launch { progress[e.id] = p } } } catch (_: Throwable) { null }
-                                        }
-                                        progress.remove(e.id)
-                                        if (car == null) Toast.makeText(act, S.get("noNet", lang), Toast.LENGTH_SHORT).show()
-                                        else onInstalled(car)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                Spacer(Modifier.height(10.dp))
+                Text(S.get("downloading", lang) + "  " + (prog * 100).toInt() + "%", color = Fg2, fontSize = 15.sp)
+            } else {
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(Fg).clickable { go() }.padding(horizontal = 44.dp, vertical = 14.dp)
+                ) { Text(S.get("download", lang), color = Color(0xFF040506), fontSize = 18.sp) }
             }
         }
     }
@@ -1058,7 +1060,7 @@ private fun Header(title: String, lang: Lang, onBack: () -> Unit) {
 
 @Composable
 private fun SettingsScreen(
-    act: BaseActivity, lang: Lang, car: Car, carGlow: Color, theme: String, name: String, perf: String, onboarding: Boolean,
+    act: BaseActivity, lang: Lang, car: Car?, carGlow: Color, theme: String, name: String, perf: String, onboarding: Boolean,
     onPerf: (String) -> Unit, onTheme: (String) -> Unit, onName: (String) -> Unit, onLang: (Lang) -> Unit, onPicker: () -> Unit, onBack: () -> Unit,
 ) {
     BackHandler { onBack() }
@@ -1126,7 +1128,7 @@ private fun SettingsScreen(
                 }
             }
             item {
-                SettingRow(Icons.Rounded.DirectionsCar, S.get("carAndColor", lang), car.brand + " " + car.model) {
+                SettingRow(Icons.Rounded.DirectionsCar, S.get("carAndColor", lang), car?.let { it.brand + " " + it.model } ?: S.get("noCarYet", lang)) {
                     Pill(S.get("change", lang), onPicker)
                 }
             }
@@ -1227,9 +1229,52 @@ private fun SettingsScreen(
                     Pill(S.get("open", lang)) { act.openAndroidSettings() }
                 }
             }
+            item { UpdateRow(act, lang) }
             item {
-                Text(S.get("version", lang) + " 1.0", color = Dim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+                Text(S.get("version", lang) + " " + Updater.versionName(act), color = Dim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun UpdateRow(act: BaseActivity, lang: Lang) {
+    val scope = rememberCoroutineScope()
+    var info by remember { mutableStateOf<Updater.Info?>(null) }
+    var state by remember { mutableStateOf("idle") }   // idle, checking, latest, available, downloading, error, noNet
+    var prog by remember { mutableFloatStateOf(0f) }
+    fun check() {
+        state = "checking"
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { try { Updater.check() } catch (_: Throwable) { null } }
+            info = r
+            state = when { r == null -> "noNet"; r.versionCode > Updater.versionCode(act) -> "available"; else -> "latest" }
+        }
+    }
+    LaunchedEffect(Unit) { check() }
+    val sub = when (state) {
+        "checking" -> S.get("loading", lang)
+        "latest" -> S.get("upToDate", lang)
+        "available" -> S.get("newVersion", lang) + " " + (info?.versionName ?: "")
+        "downloading" -> S.get("downloading", lang) + "  " + (prog * 100).toInt() + "%"
+        "error" -> S.get("updateFail", lang)
+        "noNet" -> S.get("noNet", lang)
+        else -> null
+    }
+    SettingRow(Icons.Rounded.SystemUpdate, S.get("appUpdate", lang), sub) {
+        when (state) {
+            "checking", "downloading" -> {}
+            "latest" -> OkTag(S.get("upToDate2", lang))
+            "available" -> Pill(S.get("update", lang)) {
+                val i = info ?: return@Pill
+                if (!Updater.canInstall(act)) { Updater.askInstallPermission(act); return@Pill }
+                state = "downloading"; prog = 0f
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) { Updater.downloadAndInstall(act, i) { p -> scope.launch { prog = p } } }
+                    state = if (ok) "available" else "error"
+                }
+            }
+            else -> Pill(S.get("retry", lang)) { check() }
         }
     }
 }

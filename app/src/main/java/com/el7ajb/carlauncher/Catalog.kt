@@ -2,28 +2,45 @@ package com.el7ajb.carlauncher
 
 import android.content.Context
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Online car library. New cars are published to a public GitHub repo; every installed screen
- * lists them and downloads only the car the driver picks. No app update needed.
+ * Car downloads from the public drive-cars repo on GitHub. Read-only: the app never holds a token.
+ *  - c/<CODE>.carpack : one customer's car, downloaded by its short code
+ *  - catalog.json     : optional list of public cars
  */
 object Catalog {
-    private const val BASE = "https://raw.githubusercontent.com/jubyuhanna-create/drive-cars/main/"
+    const val BASE = "https://raw.githubusercontent.com/jubyuhanna-create/drive-cars/main/"
 
     data class Entry(
         val id: String, val brand: String, val model: String, val year: String,
         val file: String, val size: Long, val rev: Int,
     )
 
-    private fun open(url: String): HttpURLConnection =
+    sealed class Result {
+        data class Ok(val car: Car) : Result()
+        object NotFound : Result()
+        object BadPack : Result()
+        object Network : Result()
+    }
+
+    fun open(url: String): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 10_000; readTimeout = 20_000; useCaches = false
+            connectTimeout = 12_000; readTimeout = 25_000; useCaches = false
             setRequestProperty("Cache-Control", "no-cache")
             instanceFollowRedirects = true
         }
+
+    fun cleanCode(s: String): String = s.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' }.take(10)
+
+    /** Blocking. Downloads the car for this code and installs it. */
+    fun byCode(ctx: Context, code: String, progress: (Float) -> Unit): Result {
+        val c = cleanCode(code)
+        if (c.length < 4) return Result.NotFound
+        return download(ctx, BASE + "c/" + c + ".carpack?t=" + System.currentTimeMillis() / 60_000, 0L, null, progress)
+    }
 
     /** Blocking: call from a background thread. Throws on network errors. */
     fun fetch(): List<Entry> {
@@ -42,24 +59,40 @@ object Catalog {
         } finally { c.disconnect() }
     }
 
-    /** Blocking: downloads and installs one car. Returns the installed car or null. */
-    fun install(ctx: Context, e: Entry, progress: (Float) -> Unit): Car? {
-        val c = open(BASE + "cars/" + e.file + "?r=" + e.rev)
+    /** Blocking: downloads and installs one catalog car. Returns the installed car or null. */
+    fun install(ctx: Context, e: Entry, progress: (Float) -> Unit): Car? =
+        (download(ctx, BASE + "cars/" + e.file + "?r=" + e.rev, e.size, e.rev, progress) as? Result.Ok)?.car
+
+    private fun download(ctx: Context, url: String, sizeHint: Long, rev: Int?, progress: (Float) -> Unit): Result {
+        val tmp = File(ctx.cacheDir, "pack.tmp")
         try {
-            if (c.responseCode != 200) return null
-            val total = if (c.contentLength > 0) c.contentLength.toLong() else e.size
-            val out = ByteArrayOutputStream(if (total > 0) total.toInt() else 1 shl 20)
-            c.inputStream.use { ins ->
-                val buf = ByteArray(32 * 1024)
-                var read = 0L
-                while (true) {
-                    val n = ins.read(buf)
-                    if (n < 0) break
-                    out.write(buf, 0, n); read += n
-                    if (total > 0) progress((read.toFloat() / total).coerceIn(0f, 1f))
+            val c = open(url)
+            try {
+                val code = c.responseCode
+                if (code == 404) return Result.NotFound
+                if (code != 200) return Result.Network
+                val total = if (c.contentLength > 0) c.contentLength.toLong() else sizeHint
+                c.inputStream.use { ins ->
+                    tmp.outputStream().use { out ->
+                        val buf = ByteArray(64 * 1024)
+                        var read = 0L
+                        var last = 0L
+                        while (true) {
+                            val n = ins.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n); read += n
+                            if (total > 0 && read - last > 64 * 1024) { last = read; progress((read.toFloat() / total).coerceIn(0f, 1f)) }
+                        }
+                    }
                 }
-            }
-            return CarRepo.importText(ctx, out.toString("UTF-8"), e.rev)
-        } finally { c.disconnect() }
+            } finally { c.disconnect() }
+            progress(1f)
+            val car = tmp.inputStream().use { CarRepo.importStream(ctx, it, rev) }
+            return if (car != null) Result.Ok(car) else Result.BadPack
+        } catch (_: Throwable) {
+            return Result.Network
+        } finally {
+            tmp.delete()
+        }
     }
 }

@@ -70,7 +70,12 @@ class MainActivity : BaseActivity() {
 
     @Deprecated("Deprecated in Java")
     @Suppress("MissingSuperCall")
-    override fun onBackPressed() { /* home screen: nothing to go back to */ }
+    override fun onBackPressed() { home.onBack() /* otherwise: home screen, nothing to go back to */ }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        home.onBack()   // home key while in the showroom: back to the normal home
+    }
 
     override fun onLocationGranted() { startGps() }
 

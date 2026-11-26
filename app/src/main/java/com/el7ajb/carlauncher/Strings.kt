@@ -122,6 +122,19 @@ object S {
         "noCars" to arrayOf("لسا ما في سيارات جديدة", "אין עדיין רכבים חדשים", "No new cars yet"),
         "retry" to arrayOf("حاول مرة ثانية", "נסה שוב", "Try again"),
         "home" to arrayOf("الرئيسية", "בית", "Home"),
+        "carCode" to arrayOf("كود السيارة", "קוד רכב", "Car code"),
+        "carCodeSub" to arrayOf("اكتب الكود اللي أخذته مع السيارة وبتنزل لحالها", "הקלד את הקוד שקיבלת והרכב יורד לבד", "Type the code you got and the car downloads by itself"),
+        "codeShort" to arrayOf("الكود قصير، تأكد منه", "הקוד קצר מדי", "The code is too short"),
+        "codeNotFound" to arrayOf("ما لقينا سيارة بهالكود", "לא נמצא רכב עם הקוד הזה", "No car found for this code"),
+        "downloading" to arrayOf("عم ينزّل", "מוריד", "Downloading"),
+        "noCarYet" to arrayOf("لسا ما في سيارة", "עדיין אין רכב", "No car yet"),
+        "noCarYetSub" to arrayOf("نزّل سيارتك بالكود وبتصير الشاشة كلها على شكلها ولونها", "הורד את הרכב שלך עם הקוד והמסך כולו יותאם אליו", "Download your car with its code and the whole screen adapts to it"),
+        "showroomHint" to arrayOf("اسحب عشان تلف السيارة  ·  كبستين عشان ترجع", "החלק כדי לסובב  ·  הקשה כפולה לחזרה", "Drag to turn the car  ·  Double tap to go back"),
+        "appUpdate" to arrayOf("تحديث Drive", "עדכון Drive", "Drive update"),
+        "upToDate" to arrayOf("عندك آخر نسخة", "יש לך את הגרסה האחרונה", "You have the latest version"),
+        "upToDate2" to arrayOf("محدّث", "מעודכן", "Up to date"),
+        "newVersion" to arrayOf("في نسخة جديدة", "יש גרסה חדשה", "New version"),
+        "updateFail" to arrayOf("التحديث ما زبط، جرب كمان مرة", "העדכון נכשל, נסה שוב", "Update failed, try again"),
     )
 
     fun get(key: String, lang: Lang): String {

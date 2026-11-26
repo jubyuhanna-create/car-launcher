@@ -359,6 +359,9 @@ class HomeUi(private val act: MainActivity) {
     private var breathAnim: ObjectAnimator? = null
     private var carAspect = 2f
     private var carBmp: Bitmap? = null
+    private var carBody: RectF? = null          // solid car body inside the home picture, 0..1
+    private val carRect = RectF()               // where the home picture sits on screen
+    private var showroom: ShowroomView? = null
 
     init {
         root.setBackgroundColor(0xFF030405.toInt())
@@ -463,6 +466,7 @@ class HomeUi(private val act: MainActivity) {
         if (!force && key == builtKey) return
         builtKey = key
         W = w; H = h
+        closeShowroomNow()
         breathAnim?.cancel()
         shineStop()
         root.removeAllViews()
@@ -481,6 +485,7 @@ class HomeUi(private val act: MainActivity) {
         pager.onPage = { refreshPageDots() }
 
         buildHero(heroPage)
+        if (car == null) buildEmptyCar(heroPage)
         buildTiles(tilesPage)
 
         hud = FrameLayout(act)
@@ -523,7 +528,7 @@ class HomeUi(private val act: MainActivity) {
         carOn = ImageView(act).apply { scaleType = ImageView.ScaleType.FIT_XY; alpha = 0f }
         shine = ShineView(act)
         carLayer.addView(refl); carLayer.addView(carOff); carLayer.addView(carOn); carLayer.addView(shine)
-        carOff.setOnClickListener { boot() }
+        carOff.setOnClickListener { if (car?.spin != null) openShowroom() else boot() }
 
         drl = View(act).apply {
             background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0, mixWhite(accent, 0.7f), Color.WHITE, mixWhite(accent, 0.7f), 0))
@@ -862,6 +867,7 @@ class HomeUi(private val act: MainActivity) {
                 val on = shrinkBmp(CarRepo.bitmap(act, c, k + "_on"), maxW) ?: off
                 val refl = off?.let { reflectionOf(it) }
                 val mask = if (!lite) off?.extractAlpha() else null
+                carBody = off?.let { ShowroomView.bodyBox(it) }
                 arrayOf(off, on, refl, mask)
             }
             val off = r[0] ?: return@launch
@@ -884,6 +890,7 @@ class HomeUi(private val act: MainActivity) {
             v.layoutParams = FrameLayout.LayoutParams(cw.toInt(), ch.toInt()).apply { gravity = Gravity.TOP or Gravity.LEFT; leftMargin = x.toInt(); topMargin = yy.toInt() }
         }
         set(carOff, y); set(carOn, y); set(shine, y); set(refl, y + ch * 0.93f)
+        carRect.set(x, y, x + cw, y + ch)
     }
 
     private fun shrinkBmp(b: Bitmap?, maxW: Int): Bitmap? {
@@ -905,10 +912,82 @@ class HomeUi(private val act: MainActivity) {
         out
     } catch (_: Throwable) { null }
 
+    /* --------------------------------------------------------------- showroom */
+
+    private fun openShowroom() = safe {
+        val c = car ?: return@safe
+        val sp = c.spin ?: return@safe
+        if (showroom != null || pager.page != 0 || W == 0) return@safe
+        val nb = carBody
+        val body = if (nb != null && carRect.width() > 0f) RectF(
+            carRect.left + nb.left * carRect.width(), carRect.top + nb.top * carRect.height(),
+            carRect.left + nb.right * carRect.width(), carRect.top + nb.bottom * carRect.height()
+        ) else null
+        val seen = prefs.getInt("srHint", 0)
+        val hint = if (seen < 3) t("showroomHint") else null
+        if (seen < 3) prefs.edit().putInt("srHint", seen + 1).apply()
+        val v = ShowroomView(act, sp, { r, i -> CarRepo.spinFile(act, c, r, i) }, accent,
+            c.brand.uppercase() + "   ·   " + c.model.uppercase(), hint, body)
+        v.onClosing = { safe { showHome() } }
+        v.onClosed = { safe { if (showroom === v) showroom = null; root.removeView(v); v.release(); resumeHomeFx() } }
+        showroom = v
+        val at = if (::popup.isInitialized) root.indexOfChild(popup).let { if (it < 0) root.childCount else it } else root.childCount
+        root.addView(v, at, FrameLayout.LayoutParams(-1, -1))
+        try { root.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY) } catch (_: Throwable) {}
+        v.prepare {
+            safe {
+                if (showroom !== v) return@safe
+                pauseHomeFx()
+                pager.animate().alpha(0f).setStartDelay(0).setDuration(260).withEndAction { if (showroom != null) pager.visibility = View.INVISIBLE }.start()
+                hud.animate().alpha(0f).setStartDelay(0).setDuration(220).withEndAction { if (showroom != null) hud.visibility = View.INVISIBLE }.start()
+                v.open()
+            }
+        }
+    }
+
+    private fun showHome() {
+        pager.visibility = View.VISIBLE; hud.visibility = View.VISIBLE
+        pager.animate().alpha(1f).setStartDelay(160).setDuration(380).start()
+        hud.animate().alpha(1f).setStartDelay(260).setDuration(380).start()
+    }
+
+    private fun pauseHomeFx() { breathAnim?.pause(); shineStop(); stopBeat() }
+    private fun resumeHomeFx() { if (!resumed) return; breathAnim?.resume(); if (!lite) shineLoop(); updateBeat() }
+
+    private fun closeShowroomNow() {
+        val v = showroom ?: return
+        showroom = null
+        try { v.release(); root.removeView(v) } catch (_: Throwable) {}
+        if (::pager.isInitialized) { pager.animate().cancel(); pager.visibility = View.VISIBLE; pager.alpha = 1f }
+        if (::hud.isInitialized) { hud.animate().cancel(); hud.visibility = View.VISIBLE; hud.alpha = 1f }
+    }
+
+    /** Back button / home key: leave the showroom first. */
+    fun onBack(): Boolean {
+        val v = showroom ?: return false
+        v.close()
+        return true
+    }
+
+    private fun buildEmptyCar(page: FrameLayout) {
+        val box = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }
+        box.addView(icon(R.drawable.ic_car, 0x38FFFFFF), LinearLayout.LayoutParams(hf(0.14f).toInt(), hf(0.14f).toInt()))
+        box.addView(text(hf(0.04f), FG, THIN).apply { text = t("noCarYet"); gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = hf(0.01f).toInt() })
+        box.addView(text(hf(0.022f), MUTED, REG, 2).apply { text = t("noCarYetSub"); gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = hf(0.008f).toInt() })
+        val btn = text(hf(0.024f), FG).apply {
+            text = t("carCode"); gravity = Gravity.CENTER; background = glass(hf(0.06f))
+            setPadding(dp(26f).toInt(), dp(12f).toInt(), dp(26f).toInt(), dp(12f).toInt())
+            pressable(0.94f) { act.openPanel("picker") }
+        }
+        box.addView(btn, LinearLayout.LayoutParams(-2, -2).apply { topMargin = hf(0.03f).toInt() })
+        page.place(box, W * 0.25f, hf(0.2f), (W * 0.5f).toInt(), hf(0.46f).toInt(), mirror = false)
+    }
+
     /* --------------------------------------------------------------- boot animation */
 
     fun boot() {
         if (!::carOff.isInitialized) return
+        closeShowroomNow()
         val fast = lite
         carLayer.animate().cancel(); hud.animate().cancel()
         carLayer.alpha = 0f; carOn.alpha = 0f; hud.alpha = 0f; nameplate.alpha = 0f
@@ -1045,7 +1124,7 @@ class HomeUi(private val act: MainActivity) {
             act.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { Hub.media.collect { safe { if (::mTitle.isInitialized) bindMedia(it) } } }
                 launch { Hub.nav.collect { safe { if (::nTitle.isInitialized) bindNav(it) } } }
-                launch { Hub.speedKmh.collect { safe { if (::speed.isInitialized) speed.setSpeed(it ?: 0) } } }
+                launch { Hub.speedKmh.collect { safe { if (::speed.isInitialized) speed.setSpeed(it ?: 0); if ((it ?: 0) > 10) showroom?.close() } } }
                 launch { Hub.gpsFix.collect { safe { refreshDots() } } }
                 launch { Hub.listenerConnected.collect { safe { refreshDots() } } }
                 var lastId = Hub.notif.value?.id ?: -1L
@@ -1082,7 +1161,7 @@ class HomeUi(private val act: MainActivity) {
     }
 
     private var resumed = false
-    fun onPause() { resumed = false; stopBeat(); breathAnim?.pause(); shineStop() }
+    fun onPause() { resumed = false; closeShowroomNow(); stopBeat(); breathAnim?.pause(); shineStop() }
     fun onResume() { resumed = true; breathAnim?.resume(); if (!lite && ::shine.isInitialized) shineLoop(); updateBeat() }
 
     /* --------------------------------------------------------------- trip */
@@ -1103,7 +1182,7 @@ class HomeUi(private val act: MainActivity) {
     private var lastEnergy = 0L
 
     private fun beatWanted(): Boolean =
-        resumed && !lite && prefs.getBoolean("beat", false) && act.hasAudio() &&
+        resumed && !lite && showroom == null && prefs.getBoolean("beat", false) && act.hasAudio() &&
             Hub.media.value?.playing == true && ::glow.isInitialized
 
     fun updateBeat() = safe { if (beatWanted()) startBeat() else stopBeat() }

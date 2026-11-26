@@ -11,8 +11,8 @@ android {
         applicationId = "com.el7ajb.carlauncher"
         minSdk = 24
         targetSdk = 34
-        versionCode = 6
-        versionName = "2.3"
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100)) ?: 6
+        versionName = "3.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev")
     }
 
     signingConfigs {

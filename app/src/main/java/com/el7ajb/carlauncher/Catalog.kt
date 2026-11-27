@@ -19,6 +19,25 @@ object Catalog {
         val file: String, val size: Long, val rev: Int,
     )
 
+    /** One ready car pack in the public list: a model in one color, downloaded by its code. */
+    data class Pack(val code: String, val brand: String, val model: String, val year: String, val color: String, val colorName: String, val hex: Int)
+
+    /** Blocking. Every ready pack, in the order the list keeps them. */
+    fun packs(): List<Pack> {
+        val c = open(BASE + "catalog.json?t=" + System.currentTimeMillis() / 60_000)
+        try {
+            if (c.responseCode != 200) throw IllegalStateException("HTTP ${c.responseCode}")
+            val arr = JSONObject(c.inputStream.bufferedReader().use { it.readText() }).optJSONArray("packs") ?: return emptyList()
+            return (0 until arr.length()).mapNotNull { i ->
+                try {
+                    val o = arr.getJSONObject(i)
+                    Pack(o.getString("code"), o.getString("brand"), o.getString("model"), o.optString("year"),
+                        o.getString("color"), o.optString("colorName"), android.graphics.Color.parseColor(o.getString("hex")))
+                } catch (_: Throwable) { null }
+            }
+        } finally { c.disconnect() }
+    }
+
     sealed class Result {
         data class Ok(val car: Car) : Result()
         object NotFound : Result()

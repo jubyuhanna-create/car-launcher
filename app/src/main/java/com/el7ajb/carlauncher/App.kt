@@ -946,11 +946,22 @@ private fun CodeSheet(act: BaseActivity, lang: Lang, onClose: () -> Unit, onInst
     var busy by remember { mutableStateOf(false) }
     var prog by remember { mutableFloatStateOf(0f) }
     var err by remember { mutableStateOf<String?>(null) }
+    var tab by remember { mutableIntStateOf(0) }          // 0 = type a code, 1 = pick from the list
+    var packs by remember { mutableStateOf<List<Catalog.Pack>?>(null) }
+    var packsErr by remember { mutableStateOf(false) }
+    var reload by remember { mutableIntStateOf(0) }
     val accent = LocalAccent.current
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(250); try { focus.requestFocus() } catch (_: Throwable) {} }
-    fun go() {
-        val c = Catalog.cleanCode(code)
+    LaunchedEffect(tab, reload) {
+        if (tab == 1 && packs == null) {
+            packsErr = false
+            val r = withContext(Dispatchers.IO) { try { Catalog.packs() } catch (_: Throwable) { null } }
+            if (r == null) packsErr = true else packs = r
+        }
+    }
+    fun go(c0: String = code) {
+        val c = Catalog.cleanCode(c0)
         if (busy) return
         if (c.length < 4) { err = S.get("codeShort", lang); return }
         busy = true; err = null; prog = 0f
@@ -967,39 +978,77 @@ private fun CodeSheet(act: BaseActivity, lang: Lang, onClose: () -> Unit, onInst
     }
     Box(Modifier.fillMaxSize().background(Color(0xE6040506)).tap { if (!busy) onClose() }) {
         Column(
-            Modifier.align(Alignment.Center).widthIn(max = 600.dp).fillMaxWidth(0.72f)
+            Modifier.align(Alignment.Center).widthIn(max = 640.dp).fillMaxWidth(0.74f)
                 .clip(RoundedCornerShape(26.dp)).background(Color(0xFF0D0F12)).border(1.dp, Color(0x24FFFFFF), RoundedCornerShape(26.dp))
                 .tap { }.verticalScroll(rememberScrollState()).padding(horizontal = 30.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(Icons.Rounded.CloudDownload, null, tint = accent, modifier = Modifier.size(34.dp))
-            Spacer(Modifier.height(10.dp))
             Text(S.get("carCode", lang), fontSize = 24.sp, fontWeight = FontWeight.Light)
-            Spacer(Modifier.height(4.dp))
-            Text(S.get("carCodeSub", lang), fontSize = 14.sp, color = Muted, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(20.dp))
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                BasicTextField(
-                    value = code, onValueChange = { v -> code = Catalog.cleanCode(v); err = null }, singleLine = true, enabled = !busy,
-                    textStyle = TextStyle(color = Fg, fontSize = 34.sp, letterSpacing = 8.sp, textAlign = TextAlign.Center, fontFamily = FontFamily.Monospace),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrect = false, keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { go() }),
-                    cursorBrush = SolidColor(accent),
-                    modifier = Modifier.fillMaxWidth().focusRequester(focus).clip(RoundedCornerShape(16.dp))
-                        .border(1.dp, if (err != null) Color(0xFFFF6B6B) else Color(0x40FFFFFF), RoundedCornerShape(16.dp))
-                        .padding(vertical = 14.dp)
-                )
+            Spacer(Modifier.height(12.dp))
+            // two ways in: the customer's code, or the installer picks car + color
+            Row(Modifier.clip(RoundedCornerShape(50)).border(1.dp, Color(0x30FFFFFF), RoundedCornerShape(50)).padding(3.dp)) {
+                listOf("haveCode", "pickFromList").forEachIndexed { i, k ->
+                    val sel = tab == i
+                    Box(
+                        Modifier.clip(RoundedCornerShape(50)).background(if (sel) Fg else Color.Transparent)
+                            .clickable(enabled = !busy) { tab = i; err = null }.padding(horizontal = 18.dp, vertical = 8.dp)
+                    ) { Text(S.get(k, lang), color = if (sel) Color(0xFF040506) else Fg2, fontSize = 15.sp) }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            if (tab == 0) {
+                Text(S.get("carCodeSub", lang), fontSize = 14.sp, color = Muted, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(16.dp))
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    BasicTextField(
+                        value = code, onValueChange = { v -> code = Catalog.cleanCode(v); err = null }, singleLine = true, enabled = !busy,
+                        textStyle = TextStyle(color = Fg, fontSize = 34.sp, letterSpacing = 8.sp, textAlign = TextAlign.Center, fontFamily = FontFamily.Monospace),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrect = false, keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { go() }),
+                        cursorBrush = SolidColor(accent),
+                        modifier = Modifier.fillMaxWidth().focusRequester(focus).clip(RoundedCornerShape(16.dp))
+                            .border(1.dp, if (err != null) Color(0xFFFF6B6B) else Color(0x40FFFFFF), RoundedCornerShape(16.dp))
+                            .padding(vertical = 14.dp)
+                    )
+                }
+            } else {
+                val l = packs
+                when {
+                    packsErr -> { Text(S.get("noNet", lang), color = Fg2, fontSize = 15.sp, textAlign = TextAlign.Center); Spacer(Modifier.height(10.dp)); Pill(S.get("retry", lang)) { reload++ } }
+                    l == null -> Text(S.get("loading", lang), color = Muted, fontSize = 15.sp)
+                    l.isEmpty() -> Text(S.get("noCars", lang), color = Muted, fontSize = 15.sp)
+                    else -> l.groupBy { Triple(it.brand, it.model, it.year) }.forEach { (car, cols) ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 5.dp).clip(RoundedCornerShape(16.dp)).background(Color(0x0AFFFFFF))
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(car.first, fontSize = 11.sp, color = Muted, letterSpacing = 2.sp, maxLines = 1)
+                                    Text(car.second + "  " + car.third, fontSize = 17.sp, color = Fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            cols.forEach { p ->
+                                Box(
+                                    Modifier.padding(start = 8.dp).size(34.dp).clip(CircleShape).background(Color(p.hex))
+                                        .border(1.dp, Color(0x55FFFFFF), CircleShape).clickable(enabled = !busy) { code = p.code; go(p.code) }
+                                )
+                            }
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(10.dp))
             Text(err ?: " ", color = Color(0xFFFF8A8A), fontSize = 14.sp, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             if (busy) {
                 Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x1AFFFFFF))) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(prog.coerceIn(0.03f, 1f)).background(accent))
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(S.get("downloading", lang) + "  " + (prog * 100).toInt() + "%", color = Fg2, fontSize = 15.sp)
-            } else {
+            } else if (tab == 0) {
                 Box(
                     Modifier.clip(RoundedCornerShape(50)).background(Fg).clickable { go() }.padding(horizontal = 44.dp, vertical = 14.dp)
                 ) { Text(S.get("download", lang), color = Color(0xFF040506), fontSize = 18.sp) }

@@ -122,6 +122,8 @@ object S {
         "noCars" to arrayOf("لسا ما في سيارات جديدة", "אין עדיין רכבים חדשים", "No new cars yet"),
         "retry" to arrayOf("حاول مرة ثانية", "נסה שוב", "Try again"),
         "home" to arrayOf("الرئيسية", "בית", "Home"),
+        "haveCode" to arrayOf("عندي كود", "יש לי קוד", "I have a code"),
+        "pickFromList" to arrayOf("اختار من القائمة", "בחר מהרשימה", "Pick from the list"),
         "carCode" to arrayOf("كود السيارة", "קוד רכב", "Car code"),
         "carCodeSub" to arrayOf("اكتب الكود اللي أخذته مع السيارة وبتنزل لحالها", "הקלד את הקוד שקיבלת והרכב יורד לבד", "Type the code you got and the car downloads by itself"),
         "codeShort" to arrayOf("الكود قصير، تأكد منه", "הקוד קצר מדי", "The code is too short"),

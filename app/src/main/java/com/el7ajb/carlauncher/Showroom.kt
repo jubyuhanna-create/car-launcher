@@ -44,6 +44,7 @@ class ShowroomView(
     private val label: String,
     private val hint: String?,
     private val homeBody: RectF?,      // where the car body sits on the home screen, in this view's coordinates
+    private val keep: Int = 36,        // frames kept decoded on each side of the current angle (less on weak units)
 ) : View(ctx) {
 
     var onClosing: (() -> Unit)? = null
@@ -120,13 +121,18 @@ class ShowroomView(
                 if (g != gen || released) return
                 val c = cache
                 val center = curIdx
+                // weak units: forget frames far from the current angle so memory stays small
+                if (keep < n / 2) for (i in 0 until n) {
+                    var d = abs(i - center); if (d > n / 2) d = n - d
+                    if (d > keep + 2 && c.get(i) != null) c.set(i, null)
+                }
                 var pick = -1
-                for (d in 0..n / 2) {
+                for (d in 0..min(keep, n / 2)) {
                     val a = mod(center + d); val b = mod(center - d)
                     if (c.get(a) == null) { pick = a; break }
                     if (c.get(b) == null) { pick = b; break }
                 }
-                if (pick < 0) return
+                if (pick < 0) { if (keep < n / 2) bg.postDelayed(this, 60); return }
                 val bmp = decode(r, pick, 2)
                 if (g != gen || released) return
                 c.set(pick, bmp ?: EMPTY)
@@ -174,13 +180,24 @@ class ShowroomView(
     }
 
     fun release() {
+        if (released) return
         released = true
         gen++
         main.removeCallbacksAndMessages(null)
         Choreographer.getInstance().removeFrameCallback(flingFrame)
         try { worker.quitSafely() } catch (_: Throwable) {}
+        // hand the frames' memory back right away instead of waiting for the garbage collector
+        val old = cache
+        val list = ArrayList<Bitmap>()
+        for (i in 0 until old.length()) old.get(i)?.let { if (it !== EMPTY) list.add(it) }
+        full?.let { list.add(it) }
         cache = AtomicReferenceArray(1)
         full = null
+        Thread {
+            // let the worker finish its last decode and the screen drop the last frame, then recycle
+            try { worker.join(1000); Thread.sleep(700) } catch (_: Throwable) {}
+            list.forEach { try { if (!it.isRecycled) it.recycle() } catch (_: Throwable) {} }
+        }.start()
     }
 
     /* ------------------------------------------------------------------ open / close */

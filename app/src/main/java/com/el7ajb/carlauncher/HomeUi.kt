@@ -86,6 +86,9 @@ private class BackgroundView(ctx: Context) : View(ctx) {
     private var fade = 1f
     var accent: Int = 0xFF6F8DB8.toInt()
         set(v) { if (field != v) { field = v; rebuild(true) } }
+    /** the band where the home layout lives (portrait and 4:3 screens get a centred band) */
+    var boxTop = 0f
+    var boxH = 0f
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { rebuild(false) }
 
@@ -95,24 +98,25 @@ private class BackgroundView(ctx: Context) : View(ctx) {
         val bmp = try { Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888) } catch (_: Throwable) { return }
         val c = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        p.shader = RadialGradient(w / 2f, h * 0.5f, w * 0.7f, intArrayOf(0xFF111316.toInt(), 0xFF08090B.toInt(), 0xFF030405.toInt()), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
+        val bt = boxTop; val bh = if (boxH > 0f) boxH else h.toFloat()
+        p.shader = RadialGradient(w / 2f, bt + bh * 0.5f, w * 0.7f, intArrayOf(0xFF111316.toInt(), 0xFF08090B.toInt(), 0xFF030405.toInt()), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
-        p.shader = RadialGradient(w / 2f, h * 0.45f, w * 0.42f, intArrayOf(withAlpha(accent, 0.22f), withAlpha(accent, 0.06f), 0), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        p.shader = RadialGradient(w / 2f, bt + bh * 0.45f, w * 0.42f, intArrayOf(withAlpha(accent, 0.22f), withAlpha(accent, 0.06f), 0), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), p)
-        p.shader = LinearGradient(0f, 0f, 0f, h * 0.6f, intArrayOf(withAlpha(accent, 0.11f), 0), floatArrayOf(0f, 0.75f), Shader.TileMode.CLAMP)
-        c.drawRect(0f, 0f, w.toFloat(), h * 0.6f, p)
+        p.shader = LinearGradient(0f, 0f, 0f, bt + bh * 0.6f, intArrayOf(withAlpha(accent, 0.11f), 0), floatArrayOf(0f, 0.75f), Shader.TileMode.CLAMP)
+        c.drawRect(0f, 0f, w.toFloat(), bt + bh * 0.6f, p)
         // perspective floor grid
         p.shader = null
         p.style = Paint.Style.STROKE
         p.strokeWidth = 1f
         p.color = withAlpha(Color.WHITE, 0.04f)
-        val fy = h * 0.655f; val vpy = h * 0.36f
+        val fy = bt + bh * 0.655f; val vpy = bt + bh * 0.36f
         for (i in -14..14) {
             val bx = w / 2f + i * w * 0.09f
             val t = (fy - vpy) / (h - vpy)
             c.drawLine(w / 2f + (bx - w / 2f) * t, fy, bx, h.toFloat(), p)
         }
-        var yy = fy; var step = h * 0.012f
+        var yy = fy; var step = bh * 0.012f
         while (yy < h) { c.drawLine(0f, yy, w.toFloat(), yy, p); yy += step; step *= 1.45f }
         // floor line
         p.style = Paint.Style.FILL
@@ -300,8 +304,10 @@ class HomeUi(private val act: MainActivity) {
     private var car: Car? = null
     private var colorK = "graphite"
     private var builtKey = ""
-    private var W = 0
+    private var W = 0          // the layout band (= the screen on normal landscape units)
     private var H = 0
+    private var boxX = 0
+    private var boxY = 0
     private var cars: List<Car> = emptyList()
 
     // views
@@ -370,7 +376,8 @@ class HomeUi(private val act: MainActivity) {
         }
     }
 
-    private fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, act.resources.displayMetrics)
+    /** layout unit: 1 at 1024x600, scales with the layout band, not with the screen's dpi, so every unit looks the same */
+    private fun dp(v: Float) = v * (if (H > 0) H else 600) / 600f
     private fun hf(f: Float) = (H * f)
     private fun t(key: String) = S.get(key, lang)
     private val rtl get() = lang.rtl
@@ -465,7 +472,11 @@ class HomeUi(private val act: MainActivity) {
         val key = "$w:$h:${lang.code}:${car?.id}:$colorK:$lite"
         if (!force && key == builtKey) return
         builtKey = key
+        // keep the layout's proportions on any screen: portrait / 4:3 get a centred band, ultra-wide gets side margins
+        val ar = w.toFloat() / h
         W = w; H = h
+        if (ar < 1.45f) H = (w / 1.7f).toInt() else if (ar > 2.4f) W = (h * 2.4f).toInt()
+        boxX = (w - W) / 2; boxY = (h - H) / 2
         closeShowroomNow()
         breathAnim?.cancel()
         shineStop()
@@ -474,10 +485,11 @@ class HomeUi(private val act: MainActivity) {
         root.layoutDirection = if (rtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
 
         bg = BackgroundView(act)
+        bg.boxTop = boxY.toFloat(); bg.boxH = H.toFloat()
         root.addView(bg, FrameLayout.LayoutParams(-1, -1))
 
         pager = PagerFrame(act)
-        root.addView(pager, FrameLayout.LayoutParams(-1, -1))
+        root.addView(pager, FrameLayout.LayoutParams(W, H, Gravity.CENTER))
         val heroPage = FrameLayout(act)
         val tilesPage = FrameLayout(act)
         pager.addPage(heroPage)
@@ -489,7 +501,7 @@ class HomeUi(private val act: MainActivity) {
         buildTiles(tilesPage)
 
         hud = FrameLayout(act)
-        root.addView(hud, FrameLayout.LayoutParams(-1, -1))
+        root.addView(hud, FrameLayout.LayoutParams(W, H, Gravity.CENTER))
         buildTopBar(hud)
         buildDots(hud)
         buildDock(hud)
@@ -566,7 +578,7 @@ class HomeUi(private val act: MainActivity) {
         bindTrip(Trip.state.value)
 
         // cards
-        val cw = (W * 0.20f).toInt()
+        val cw = (W * 0.215f).toInt()
         val mediaCard = buildMediaCard(cw)
         page.place(mediaCard, W - W * 0.04f - cw, hf(0.24f), cw, hf(0.33f).toInt())
         val navCard = buildNavCard(cw)
@@ -586,7 +598,7 @@ class HomeUi(private val act: MainActivity) {
 
     private fun cardShell(): Pair<FrameLayout, LinearLayout> {
         val frame = FrameLayout(act).apply { background = glass(dp(20f)); clipToOutline = true }
-        val col = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16f).toInt(), dp(14f).toInt(), dp(16f).toInt(), dp(14f).toInt()) }
+        val col = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14f).toInt(), dp(12f).toInt(), dp(14f).toInt(), dp(12f).toInt()) }
         return frame to col
     }
 
@@ -713,6 +725,7 @@ class HomeUi(private val act: MainActivity) {
         }
         fun btn(res: Int, active: Boolean = false, onClick: () -> Unit) {
             val f = FrameLayout(act)
+            f.contentDescription = act.resources.getResourceEntryName(res).removePrefix("ic_")
             if (active) {
                 dockActiveBg = View(act)
                 f.addView(dockActiveBg, FrameLayout.LayoutParams(-1, -1))
@@ -921,14 +934,12 @@ class HomeUi(private val act: MainActivity) {
         if ((Hub.speedKmh.value ?: 0) > 10) { boot(); return@safe }   // no showroom while driving
         val nb = carBody
         val body = if (nb != null && carRect.width() > 0f) RectF(
-            carRect.left + nb.left * carRect.width(), carRect.top + nb.top * carRect.height(),
-            carRect.left + nb.right * carRect.width(), carRect.top + nb.bottom * carRect.height()
+            boxX + carRect.left + nb.left * carRect.width(), boxY + carRect.top + nb.top * carRect.height(),
+            boxX + carRect.left + nb.right * carRect.width(), boxY + carRect.top + nb.bottom * carRect.height()
         ) else null
-        val seen = prefs.getInt("srHint", 0)
-        val hint = if (seen < 3) t("showroomHint") else null
-        if (seen < 3) prefs.edit().putInt("srHint", seen + 1).apply()
+        // no hint text on screen: the seller shows the customer how it works
         val v = ShowroomView(act, sp, { r, i -> CarRepo.spinFile(act, c, r, i) }, accent,
-            c.brand.uppercase() + "   ·   " + c.model.uppercase(), hint, body)
+            c.brand.uppercase() + "   ·   " + c.model.uppercase(), null, body, showroomCache())
         v.onClosing = { safe { showHome() } }
         v.onClosed = { safe { if (showroom === v) showroom = null; root.removeView(v); v.release(); resumeHomeFx() } }
         showroom = v
@@ -944,6 +955,13 @@ class HomeUi(private val act: MainActivity) {
                 v.open()
             }
         }
+    }
+
+    /** How many frames each side of the current angle stay decoded: all of them on normal units, fewer on weak ones. */
+    private fun showroomCache(): Int {
+        val am = act.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val weak = lite || am.isLowRamDevice || am.memoryClass < 192 || act.isWeakDevice()
+        return if (weak) 14 else 36
     }
 
     private fun showHome() {
@@ -1009,15 +1027,10 @@ class HomeUi(private val act: MainActivity) {
         hud.animate().alpha(1f).setStartDelay(if (fast) 900 else 2300).setDuration(if (fast) 400 else 900).start()
         nameplate.animate().alpha(1f).setStartDelay(if (fast) 900 else 2300).setDuration(if (fast) 400 else 1000).start()
 
-        breathAnim?.cancel()
+        // nothing keeps animating after the intro: an idle home draws zero frames (light on weak units)
+        breathAnim?.cancel(); breathAnim = null
         glow.alpha = 0.8f
-        if (!fast) {
-            breathAnim = ObjectAnimator.ofFloat(glow, View.ALPHA, 0.5f, 1f).apply {
-                duration = 4200; repeatMode = ValueAnimator.REVERSE; repeatCount = ValueAnimator.INFINITE; startDelay = 2000
-                start()
-            }
-            shineLoop()
-        }
+        if (!fast) shineLoop()
     }
 
     private var shineAnim: ValueAnimator? = null
@@ -1034,7 +1047,6 @@ class HomeUi(private val act: MainActivity) {
             })
             start()
         }
-        main.postDelayed(shineRun, 11000)
     }
 
     private fun greeting(): String {

@@ -973,6 +973,7 @@ private fun CodeSheet(act: BaseActivity, lang: Lang, onClose: () -> Unit, onInst
                 Catalog.Result.NotFound -> err = S.get("codeNotFound", lang)
                 Catalog.Result.BadPack -> err = S.get("invalidPack", lang)
                 Catalog.Result.Network -> err = S.get("noNet", lang)
+                Catalog.Result.Clock -> err = S.get("badClock", lang)
             }
         }
     }
@@ -1041,6 +1042,12 @@ private fun CodeSheet(act: BaseActivity, lang: Lang, onClose: () -> Unit, onInst
             }
             Spacer(Modifier.height(10.dp))
             Text(err ?: " ", color = Color(0xFFFF8A8A), fontSize = 14.sp, textAlign = TextAlign.Center)
+            if (err == S.get("badClock", lang)) {
+                Spacer(Modifier.height(6.dp))
+                Pill(S.get("dateSettings", lang)) {
+                    try { act.startActivity(android.content.Intent(android.provider.Settings.ACTION_DATE_SETTINGS)) } catch (_: Throwable) { act.openAndroidSettings() }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             if (busy) {
                 Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x1AFFFFFF))) {

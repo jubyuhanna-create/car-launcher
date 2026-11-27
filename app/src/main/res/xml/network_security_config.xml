@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Old units (Android 7.0) miss newer root certificates such as ISRG Root X1, which GitHub's
+     download servers use now. Ship them with the app so car and update downloads work everywhere. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/extra_roots" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

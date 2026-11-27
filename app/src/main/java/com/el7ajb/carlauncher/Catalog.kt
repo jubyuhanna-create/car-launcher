@@ -43,7 +43,11 @@ object Catalog {
         object NotFound : Result()
         object BadPack : Result()
         object Network : Result()
+        object Clock : Result()          // the unit's date is wrong, so secure downloads cannot work
     }
+
+    /** Units without a clock battery often boot in 2015 or so; HTTPS then fails. */
+    fun clockWrong(): Boolean = System.currentTimeMillis() < 1_735_689_600_000L   // 2025-01-01
 
     fun open(url: String): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
@@ -108,8 +112,11 @@ object Catalog {
             progress(1f)
             val car = tmp.inputStream().use { CarRepo.importStream(ctx, it, rev) }
             return if (car != null) Result.Ok(car) else Result.BadPack
-        } catch (_: Throwable) {
-            return Result.Network
+        } catch (e: Throwable) {
+            val cert = generateSequence(e as Throwable?) { it.cause }.any {
+                it is java.security.cert.CertificateNotYetValidException || it is java.security.cert.CertificateExpiredException
+            }
+            return if (clockWrong() || cert) Result.Clock else Result.Network
         } finally {
             tmp.delete()
         }

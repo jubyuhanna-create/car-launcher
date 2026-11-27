@@ -1,0 +1,71 @@
+name: customer-build
+# Actions > customer-build > Run workflow: pick the car, get WoWDRIVE-<car>.apk with that car inside (all its colors).
+on:
+  workflow_dispatch:
+    inputs:
+      car:
+        description: "Car"
+        required: true
+        default: superb
+        type: choice
+        options: [superb, octavia, corolla, golfgti, polo, ibiza, leon]
+      customer:
+        description: "Customer name for the file name (optional, English letters)"
+        required: false
+        default: ""
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.5"
+      - name: Put the car inside the app
+        env:
+          CAR: ${{ inputs.car }}
+          CUSTOMER: ${{ inputs.customer }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          base = "https://raw.githubusercontent.com/jubyuhanna-create/drive-cars/main/"
+          get = lambda p: urllib.request.urlopen(base + p, timeout=60).read()
+          car = os.environ["CAR"]
+          packs = [p for p in json.loads(get("catalog.json")).get("packs", []) if p["car"] == car]
+          if not packs:
+              raise SystemExit(f"No packs for '{car}' in drive-cars yet. Ask for it to be rendered first.")
+          os.makedirs("app/src/main/assets/bundle", exist_ok=True)
+          for p in packs:
+              data = get(f"c/{p['code']}.carpack")
+              assert data[:2] == b"PK", p
+              open(f"app/src/main/assets/bundle/{p['color']}.carpack", "wb").write(data)
+              print("packed", p["color"], p["code"], len(data))
+          app = json.loads(get("app.json"))
+          model = re.sub(r"[^A-Za-z0-9]+", "-", packs[0]["model"].title()).strip("-")
+          who = re.sub(r"[^A-Za-z0-9]+", "-", os.environ.get("CUSTOMER", "")).strip("-")
+          name = "WoWDRIVE-" + model + ("-" + who if who else "") + ".apk"
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"DRIVE_VC={app['versionCode']}\nDRIVE_VN={app['versionName']}-{car}\nOUT_NAME={name}\n")
+          PY
+      - name: Build
+        run: gradle assembleRelease --no-daemon
+      - name: Name the file
+        run: cp app/build/outputs/apk/release/app-release.apk "$OUT_NAME" && ls -la "$OUT_NAME"
+      - name: Publish (Releases page)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: customer-${{ inputs.car }}-${{ github.run_number }}
+          name: "${{ env.OUT_NAME }}"
+          files: ${{ env.OUT_NAME }}
+      - name: Keep a copy on the customer branch
+        run: |
+          mkdir out && cp "$OUT_NAME" out/ && cd out
+          git init -q -b customer && git add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "$OUT_NAME"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" customer:customer

@@ -124,6 +124,7 @@ object S {
         "home" to arrayOf("الرئيسية", "בית", "Home"),
         "badClock" to arrayOf("تاريخ الشاشة غلط، صلّحه وجرب كمان مرة", "התאריך במסך שגוי, תקן ונסה שוב", "The screen's date is wrong, fix it and try again"),
         "dateSettings" to arrayOf("التاريخ والساعة", "תאריך ושעה", "Date and time"),
+        "carColors" to arrayOf("ألوان السيارة", "צבעי הרכב", "Car colors"),
         "haveCode" to arrayOf("عندي كود", "יש לי קוד", "I have a code"),
         "pickFromList" to arrayOf("اختار من القائمة", "בחר מהרשימה", "Pick from the list"),
         "carCode" to arrayOf("كود السيارة", "קוד רכב", "Car code"),

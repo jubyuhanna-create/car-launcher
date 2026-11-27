@@ -822,10 +822,13 @@ private fun PickerScreen(
     act: BaseActivity, lang: Lang, cars: List<Car>, car: Car?, colorK: String, canGoBack: Boolean,
     onSelect: (String, String) -> Unit, onCarsChanged: () -> Unit, onStart: () -> Unit, onBack: () -> Unit,
 ) {
-    // a fresh screen has no car: open the code box straight away
-    var showCode by remember { mutableStateOf(cars.isEmpty()) }
-    BackHandler(enabled = canGoBack && !showCode) { onBack() }
+    // a customer build carries his car: show its colors first. A plain build opens the code box.
+    val bundle = remember { Bundle.list(act) }
+    var showBundle by remember { mutableStateOf(bundle.isNotEmpty() && cars.none { c -> bundle.any { it.id == c.id } }) }
+    var showCode by remember { mutableStateOf(cars.isEmpty() && bundle.isEmpty()) }
+    BackHandler(enabled = canGoBack && !showCode && !showBundle) { onBack() }
     BackHandler(enabled = showCode) { showCode = false }
+    BackHandler(enabled = showBundle && cars.isNotEmpty()) { showBundle = false }
     val scope = rememberCoroutineScope()
     val col = car?.let { c -> c.colors.firstOrNull { it.k == colorK } ?: c.colors.first() }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -850,6 +853,14 @@ private fun PickerScreen(
                 Column(Modifier.weight(1f)) {
                     Text(S.get("chooseCar", lang), fontSize = (H * 0.05f).sp(), fontWeight = FontWeight.Light)
                     Text(S.get("chooseSub", lang), fontSize = (H * 0.022f).sp(), color = Muted)
+                }
+                if (bundle.isNotEmpty()) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(50)).background(LocalAccent.current.copy(alpha = 0.22f))
+                            .border(1.dp, LocalAccent.current.copy(alpha = 0.6f), RoundedCornerShape(50))
+                            .clickable { showBundle = true }.padding(horizontal = 22.dp, vertical = 10.dp)
+                    ) { Text(S.get("carColors", lang), fontSize = (H * 0.022f).sp()) }
+                    Spacer(Modifier.width(10.dp))
                 }
                 Box(
                     Modifier.clip(RoundedCornerShape(50)).background(LocalAccent.current.copy(alpha = 0.22f))
@@ -929,6 +940,13 @@ private fun PickerScreen(
                 ) { Text(S.get("start", lang), color = Color(0xFF040506), fontSize = (H * 0.026f).sp()) }
             }
         }
+        if (showBundle && bundle.isNotEmpty()) BundleSheet(act, lang, bundle, car?.id, canClose = cars.isNotEmpty(),
+            onClose = { showBundle = false },
+            onInstalled = { added ->
+                showBundle = false
+                onCarsChanged(); onSelect(added.id, added.colors.first().k)
+                if (!canGoBack) onStart()      // first start: straight to the home, one tap
+            })
         if (showCode) CodeSheet(act, lang,
             onClose = { showCode = false },
             onInstalled = { added ->
@@ -936,6 +954,66 @@ private fun PickerScreen(
                 onCarsChanged(); onSelect(added.id, added.colors.first().k)
                 Toast.makeText(act, S.get("carAdded", lang) + ": " + added.brand + " " + added.model, Toast.LENGTH_SHORT).show()
             })
+    }
+}
+
+@Composable
+private fun BundleSheet(
+    act: BaseActivity, lang: Lang, items: List<Bundle.Item>, current: String?, canClose: Boolean,
+    onClose: () -> Unit, onInstalled: (Car) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var sel by remember { mutableIntStateOf(items.indexOfFirst { it.id == current }.coerceAtLeast(0)) }
+    val previews = remember { mutableStateMapOf<Int, ImageBitmap>() }
+    var busy by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        // the chosen one first, then the rest
+        (listOf(sel) + items.indices.filter { it != sel }).forEach { i ->
+            withContext(Dispatchers.IO) { Bundle.preview(act, items[i]) }?.let { previews[i] = it.asImageBitmap() }
+        }
+    }
+    val it = items[sel]
+    Box(Modifier.fillMaxSize().background(Color(0xF7040506)).tap { if (canClose && !busy) onClose() }) {
+        BoxWithConstraints(Modifier.fillMaxSize().tap { }) {
+            val H = maxHeight
+            Column(Modifier.fillMaxSize().padding(vertical = H * 0.05f), horizontalAlignment = Alignment.CenterHorizontally) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(it.brand, fontSize = (H * 0.022f).sp(), color = Muted, letterSpacing = 6.sp)
+                        Text(it.model + "  " + it.year, fontSize = (H * 0.05f).sp(), fontWeight = FontWeight.Light)
+                    }
+                }
+                Box(Modifier.weight(1f).fillMaxWidth(0.82f), contentAlignment = Alignment.Center) {
+                    previews[sel]?.let { b -> Image(b, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+                }
+                Text(S.get(it.color.k, lang).let { t -> if (t == it.color.k) it.color.n else t }, fontSize = (H * 0.026f).sp(), color = Fg2)
+                Spacer(Modifier.height(H * 0.025f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    items.forEachIndexed { i, x ->
+                        val on = i == sel
+                        Box(
+                            Modifier.padding(horizontal = 8.dp).size(H * 0.08f).clip(CircleShape)
+                                .border(if (on) 3.dp else 1.dp, if (on) Fg else Color(0x55FFFFFF), CircleShape)
+                                .clickable(enabled = !busy) { sel = i }.padding(if (on) 6.dp else 4.dp)
+                                .clip(CircleShape).background(Color(x.color.hex))
+                        )
+                    }
+                }
+                Spacer(Modifier.height(H * 0.04f))
+                Box(
+                    Modifier.clip(RoundedCornerShape(50)).background(if (busy) Color(0x33FFFFFF) else Fg)
+                        .clickable(enabled = !busy) {
+                            busy = true
+                            scope.launch {
+                                val car = withContext(Dispatchers.IO) { Bundle.install(act, items[sel]) }
+                                busy = false
+                                if (car != null) onInstalled(car)
+                                else Toast.makeText(act, S.get("invalidPack", lang), Toast.LENGTH_SHORT).show()
+                            }
+                        }.padding(horizontal = 56.dp, vertical = 16.dp)
+                ) { Text(if (busy) S.get("loading", lang) else S.get("start", lang), color = if (busy) Fg else Color(0xFF040506), fontSize = (H * 0.03f).sp()) }
+            }
+        }
     }
 }
 

@@ -11,8 +11,9 @@ android {
         applicationId = "com.el7ajb.carlauncher"
         minSdk = 24
         targetSdk = 34
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100)) ?: 6
-        versionName = "3.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev")
+        // a customer build takes the version of the newest normal build, so later updates still reach it
+        versionCode = System.getenv("DRIVE_VC")?.toIntOrNull() ?: (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100)) ?: 6
+        versionName = System.getenv("DRIVE_VN") ?: ("3.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "dev"))
     }
 
     signingConfigs {
@@ -34,6 +35,9 @@ android {
         debug {
             signingConfig = signingConfigs.getByName("rel")
         }
+    }
+    androidResources {
+        noCompress += "carpack"     // car packs are already-compressed pictures: store them as they are
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

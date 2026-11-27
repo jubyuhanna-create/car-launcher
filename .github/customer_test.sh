@@ -44,7 +44,8 @@ set -- $b; [ -n "$4" ] && { sh input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); log 
 sleep 4; sh input tap 605 469; sleep 2; shot 7_red; sh input tap 512 543; sleep 6
 log "  cars on screen now: $(sh ls /data/data/$PKG/files/cars | tr '\n' ' ')"
 sh input keyevent KEYCODE_HOME; sleep 6; shot 8_home_red
-log "== unit set to China time"
+log "== unit set to China time, car in Nazareth"
+for k in 1 2 3; do adb emu geo fix 35.30 32.70 >/dev/null 2>&1; sleep 1; done
 sh cmd alarm set-timezone Asia/Shanghai >/dev/null; sh service call alarm 3 s16 Asia/Shanghai >/dev/null
 sleep 2; log "  system zone: $(sh getprop persist.sys.timezone), system time: $(sh date +%H:%M), Israel time: $(TZ=Asia/Jerusalem date +%H:%M)"
 sh am force-stop $PKG; sh input keyevent KEYCODE_HOME; sleep 7; shot 9_home_china_zone

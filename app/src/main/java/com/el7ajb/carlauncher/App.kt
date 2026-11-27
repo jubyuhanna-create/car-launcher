@@ -1214,6 +1214,7 @@ private fun SettingsScreen(
     val connected by Hub.listenerConnected.collectAsState()
     val notifOk = remember(resume, connected) { connected || act.notifAccessGranted() }
     val locOk = remember(resume) { act.hasLocation() }
+    val tzWrong = remember(resume) { Clock.systemWrong(act) }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF07080A)).padding(24.dp)) {
         Header(S.get("settings", lang), lang, onBack)
@@ -1242,10 +1243,9 @@ private fun SettingsScreen(
                     if (ok) OkTag(S.get("granted", lang)) else Pill(S.get("grant", lang)) { act.openAccessibility() }
                 }
             }
-            item {
-                // the unit is on China/UTC time: Drive already shows Israel time, this fixes it for every app
-                val wrong = remember(resume) { Clock.systemWrong(act) }
-                if (wrong) SettingRow(Icons.Rounded.Schedule, S.get("tzWrong", lang), S.get("tzWrongSub", lang) + " (" + java.util.TimeZone.getDefault().id + ")") {
+            // the unit is on China/UTC time: Drive already shows Israel time, this fixes it for every app
+            if (tzWrong) item {
+                SettingRow(Icons.Rounded.Schedule, S.get("tzWrong", lang), S.get("tzWrongSub", lang) + " (" + java.util.TimeZone.getDefault().id + ")") {
                     Pill(S.get("fix", lang)) {
                         try { act.startActivity(Intent(android.provider.Settings.ACTION_DATE_SETTINGS)) } catch (_: Throwable) { act.openAndroidSettings() }
                     }

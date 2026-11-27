@@ -13,6 +13,10 @@ on:
         description: "Customer name for the file name (optional, English letters)"
         required: false
         default: ""
+      test:
+        description: "Also test it on an emulator (takes ~10 more minutes)"
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
@@ -69,3 +73,27 @@ jobs:
           git init -q -b customer && git add -A
           git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "$OUT_NAME"
           git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" customer:customer
+      - name: Enable KVM
+        if: ${{ inputs.test }}
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test it on an Android 10 emulator with no internet
+        if: ${{ inputs.test }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          ram-size: 2048M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -skin 1024x600
+          disable-animations: false
+          script: bash .github/customer_test.sh
+      - name: Save test screenshots to the customer-test branch
+        if: ${{ always() && inputs.test }}
+        run: |
+          [ -d qa ] || exit 0
+          cd qa && git init -q -b t && git add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "customer test"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" t:customer-test

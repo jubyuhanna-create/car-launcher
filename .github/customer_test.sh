@@ -28,7 +28,7 @@ PY
 )
 log "  Start at: $xy"
 # color dots sit in one row above Start: tap the second one
-if [ -n "$xy" ]; then y=${xy#* }; sh input tap 445 $((y - 95)); sleep 2; shot 2_color_black; sh input tap $xy; fi
+if [ -n "$xy" ]; then sh input tap 418 469; sleep 2; shot 2_color_black; sh input tap $xy; fi
 sleep 6
 log "  cars on screen: $(sh ls /data/data/$PKG/files/cars | tr '\n' ' ')"
 log "  frames: $(sh ls /data/data/$PKG/files/cars/*/spin 2>/dev/null | wc -l)"
@@ -36,4 +36,12 @@ shot 3_after_start
 sh input keyevent KEYCODE_HOME; sleep 6; shot 4_home
 sh input tap 512 282; sleep 4; shot 5_showroom
 sh input keyevent KEYCODE_BACK; sleep 2
+log "== change color later, still offline"
+sh am start -f 0x10008000 -n $PKG/.PanelActivity --es screen picker >/dev/null; sleep 4; shot 6_picker
+sh uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml qa/ui.xml >/dev/null 2>&1
+b=$(grep -o 'text="Car colors"[^>]*bounds="[^"]*"' qa/ui.xml | grep -o 'bounds="[^"]*"' | grep -o '[0-9]*' | tr '\n' ' ')
+set -- $b; [ -n "$4" ] && { sh input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); log "  tapped Car colors"; }
+sleep 4; sh input tap 605 469; sleep 2; shot 7_red; sh input tap 512 543; sleep 6
+log "  cars on screen now: $(sh ls /data/data/$PKG/files/cars | tr '\n' ' ')"
+sh input keyevent KEYCODE_HOME; sleep 6; shot 8_home_red
 c=$(sh logcat -d -b crash | grep -A15 FATAL | head -40); [ -n "$c" ] && { log "CRASH"; echo "$c" >> $R; } || log "  no crashes"

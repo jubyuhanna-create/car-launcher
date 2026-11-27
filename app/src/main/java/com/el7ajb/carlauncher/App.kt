@@ -973,7 +973,7 @@ private fun BundleSheet(
         }
     }
     val it = items[sel]
-    Box(Modifier.fillMaxSize().background(Color(0xF7040506)).tap { if (canClose && !busy) onClose() }) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF040506)).tap { if (canClose && !busy) onClose() }) {
         BoxWithConstraints(Modifier.fillMaxSize().tap { }) {
             val H = maxHeight
             Column(Modifier.fillMaxSize().padding(vertical = H * 0.05f), horizontalAlignment = Alignment.CenterHorizontally) {

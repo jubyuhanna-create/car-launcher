@@ -44,4 +44,11 @@ set -- $b; [ -n "$4" ] && { sh input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); log 
 sleep 4; sh input tap 605 469; sleep 2; shot 7_red; sh input tap 512 543; sleep 6
 log "  cars on screen now: $(sh ls /data/data/$PKG/files/cars | tr '\n' ' ')"
 sh input keyevent KEYCODE_HOME; sleep 6; shot 8_home_red
+log "== unit set to China time"
+sh cmd alarm set-timezone Asia/Shanghai >/dev/null; sh service call alarm 3 s16 Asia/Shanghai >/dev/null
+sleep 2; log "  system zone: $(sh getprop persist.sys.timezone), system time: $(sh date +%H:%M), Israel time: $(TZ=Asia/Jerusalem date +%H:%M)"
+sh am force-stop $PKG; sh input keyevent KEYCODE_HOME; sleep 7; shot 9_home_china_zone
+sh uiautomator dump /sdcard/ui.xml >/dev/null; adb pull /sdcard/ui.xml qa/ui.xml >/dev/null 2>&1
+log "  Drive clock shows: $(grep -o 'text="[0-9][0-9]:[0-9][0-9]"' qa/ui.xml | head -1)"
+sh am start -f 0x10008000 -n $PKG/.PanelActivity --es screen settings >/dev/null; sleep 4; shot 10_settings_zone_warning
 c=$(sh logcat -d -b crash | grep -A15 FATAL | head -40); [ -n "$c" ] && { log "CRASH"; echo "$c" >> $R; } || log "  no crashes"

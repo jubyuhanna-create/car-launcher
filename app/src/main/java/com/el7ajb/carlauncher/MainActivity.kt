@@ -22,6 +22,7 @@ class MainActivity : BaseActivity() {
     private val locListener = object : LocationListener {
         override fun onLocationChanged(loc: Location) {
             Hub.gpsFix.value = true
+            Clock.onLocation(this@MainActivity, loc.latitude, loc.longitude)
             Trip.onLocation(this@MainActivity, loc)
             Hub.speedKmh.value = if (loc.hasSpeed()) (loc.speed * 3.6f).toInt() else 0
         }

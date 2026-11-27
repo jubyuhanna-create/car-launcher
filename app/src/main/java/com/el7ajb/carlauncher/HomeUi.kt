@@ -1050,7 +1050,7 @@ class HomeUi(private val act: MainActivity) {
     }
 
     private fun greeting(): String {
-        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val h = Calendar.getInstance(Clock.zone(act)).get(Calendar.HOUR_OF_DAY)
         return t(when (h) { in 5..11 -> "gMorning"; in 12..16 -> "gNoon"; in 17..21 -> "gEvening"; else -> "gNight" })
     }
 
@@ -1063,9 +1063,10 @@ class HomeUi(private val act: MainActivity) {
     private fun tickClock() {
         if (!::clock.isInitialized) return
         val now = Date()
-        clock.text = SimpleDateFormat("HH:mm", Locale.US).format(now)
+        val tz = Clock.zone(act)
+        clock.text = SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = tz }.format(now)
         val pat = when (lang) { Lang.AR -> "EEEE، d MMMM"; Lang.HE -> "EEEE, d בMMMM"; Lang.EN -> "EEEE, d MMMM" }
-        date.text = SimpleDateFormat(pat, lang.locale).format(now)
+        date.text = SimpleDateFormat(pat, lang.locale).apply { timeZone = tz }.format(now)
     }
 
     private var lastArt: Bitmap? = null

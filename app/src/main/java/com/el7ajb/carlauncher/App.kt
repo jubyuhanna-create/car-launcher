@@ -1243,6 +1243,15 @@ private fun SettingsScreen(
                 }
             }
             item {
+                // the unit is on China/UTC time: Drive already shows Israel time, this fixes it for every app
+                val wrong = remember(resume) { Clock.systemWrong(act) }
+                if (wrong) SettingRow(Icons.Rounded.Schedule, S.get("tzWrong", lang), S.get("tzWrongSub", lang) + " (" + java.util.TimeZone.getDefault().id + ")") {
+                    Pill(S.get("fix", lang)) {
+                        try { act.startActivity(Intent(android.provider.Settings.ACTION_DATE_SETTINGS)) } catch (_: Throwable) { act.openAndroidSettings() }
+                    }
+                }
+            }
+            item {
                 SettingRow(Icons.Rounded.Language, S.get("language", lang), null) {
                     Row {
                         Lang.values().forEach { l ->

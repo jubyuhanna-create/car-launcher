@@ -321,6 +321,8 @@ class HomeUi(private val act: MainActivity) {
     private lateinit var refl: ImageView
     private lateinit var shine: ShineView
     private lateinit var brand: ImageView
+    private lateinit var brandLayer: FrameLayout
+    private var coldStart = true
     private lateinit var drl: View
     private lateinit var greet: TextView
     private lateinit var greetName: TextView
@@ -507,8 +509,12 @@ class HomeUi(private val act: MainActivity) {
         buildDots(hud)
         buildDock(hud)
         // brand mark for the wake-up intro
-        brand = ImageView(act).apply { setImageResource(R.drawable.logo_full); alpha = 0f; scaleType = ImageView.ScaleType.FIT_CENTER }
-        root.addView(brand, FrameLayout.LayoutParams((H * 0.5f * 300 / 220).toInt(), (H * 0.5f).toInt(), Gravity.CENTER))
+        // same size and color as the cold-start splash, so the hand-over is invisible
+        brandLayer = FrameLayout(act).apply { setBackgroundColor(0xFF0A0A0A.toInt()); visibility = View.GONE }
+        brand = ImageView(act).apply { setImageResource(R.drawable.logo_full); scaleType = ImageView.ScaleType.FIT_CENTER }
+        val bd = act.resources.displayMetrics.density
+        brandLayer.addView(brand, FrameLayout.LayoutParams((240 * bd).toInt(), (176 * bd).toInt(), Gravity.CENTER))
+        root.addView(brandLayer, FrameLayout.LayoutParams(-1, -1))
         buildPopup(root)
 
         accent = targetAccent()
@@ -1019,11 +1025,15 @@ class HomeUi(private val act: MainActivity) {
         val gIn = if (fast) 350L else 700L
         // WoWDRIVE mark first, then the greeting and the car
         val d = if (fast) 650L else 1100L
-        if (::brand.isInitialized) {
-            brand.animate().cancel(); brand.alpha = 0f; brand.scaleX = 0.92f; brand.scaleY = 0.92f
-            brand.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(0).setDuration(if (fast) 250 else 450).withEndAction {
-                brand.animate().alpha(0f).setStartDelay(if (fast) 200 else 350).setDuration(if (fast) 200 else 350).start()
-            }.start()
+        if (::brandLayer.isInitialized) {
+            brand.animate().cancel(); brandLayer.animate().cancel()
+            brandLayer.visibility = View.VISIBLE; brandLayer.alpha = 1f
+            // cold start: the splash already shows the logo, keep it; wake-up: fade it in
+            brand.alpha = if (coldStart) 1f else 0f
+            coldStart = false
+            brand.animate().alpha(1f).setStartDelay(0).setDuration(if (fast) 250 else 450).start()
+            brandLayer.animate().alpha(0f).setStartDelay(d - (if (fast) 250 else 380)).setDuration(if (fast) 250 else 380)
+                .withEndAction { brandLayer.visibility = View.GONE }.start()
         }
         greet.animate().alpha(1f).setStartDelay(d).setDuration(gIn).withEndAction {
             greet.animate().alpha(0f).setStartDelay(if (fast) 600 else 900).setDuration(if (fast) 300 else 600).start()

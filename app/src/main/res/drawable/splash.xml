@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- shown for the split second before the home is drawn on a cold start -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/black" />
+    <item><color android:color="#FF0A0A0A" /></item>
     <item android:drawable="@drawable/logo_full" android:gravity="center" android:width="240dp" android:height="176dp" />
 </layer-list>

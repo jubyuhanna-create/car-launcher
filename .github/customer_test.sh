@@ -34,6 +34,7 @@ log "  cars on screen: $(sh ls /data/data/$PKG/files/cars | tr '\n' ' ')"
 log "  frames: $(sh ls /data/data/$PKG/files/cars/*/spin 2>/dev/null | wc -l)"
 shot 3_after_start
 sh input keyevent KEYCODE_HOME; sleep 6; shot 4_home
+sh input keyevent 26; sleep 2; sh input keyevent 224; sleep 1.0; shot 4b_wake_logo; sleep 4; shot 4c_after_wake
 sh input tap 512 282; sleep 4; shot 5_showroom
 sh input keyevent KEYCODE_BACK; sleep 2
 log "== change color later, still offline"

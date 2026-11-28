@@ -6,4 +6,7 @@
         <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:windowShowWallpaper">false</item>
     </style>
+    <style name="Theme.Car.Splash" parent="Theme.Car">
+        <item name="android:windowBackground">@drawable/splash</item>
+    </style>
 </resources>

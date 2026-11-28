@@ -43,6 +43,8 @@ class MainActivity : BaseActivity() {
         Trip.load(this)
         home = HomeUi(this)
         setContentView(home.root)
+        // the logo splash is only for the cold start: once the home is drawn, a plain black window is cheaper
+        home.root.post { window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK)) }
         if (!getSharedPreferences("cl", 0).getBoolean("setup", false)) openPanel("picker")
         CrashLog.take(this)?.let { showCrash(it) }
         if (hasLocation()) startGps()

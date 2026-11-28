@@ -320,6 +320,7 @@ class HomeUi(private val act: MainActivity) {
     private lateinit var carOn: ImageView
     private lateinit var refl: ImageView
     private lateinit var shine: ShineView
+    private lateinit var brand: ImageView
     private lateinit var drl: View
     private lateinit var greet: TextView
     private lateinit var greetName: TextView
@@ -505,6 +506,9 @@ class HomeUi(private val act: MainActivity) {
         buildTopBar(hud)
         buildDots(hud)
         buildDock(hud)
+        // brand mark for the wake-up intro
+        brand = ImageView(act).apply { setImageResource(R.drawable.logo_full); alpha = 0f; scaleType = ImageView.ScaleType.FIT_CENTER }
+        root.addView(brand, FrameLayout.LayoutParams((H * 0.5f * 300 / 220).toInt(), (H * 0.5f).toInt(), Gravity.CENTER))
         buildPopup(root)
 
         accent = targetAccent()
@@ -1013,19 +1017,27 @@ class HomeUi(private val act: MainActivity) {
         greet.text = greeting(); greetName.text = prefs.getString("name", "") ?: ""
         greet.alpha = 0f; greetName.alpha = 0f
         val gIn = if (fast) 350L else 700L
-        greet.animate().alpha(1f).setStartDelay(0).setDuration(gIn).withEndAction {
+        // WoWDRIVE mark first, then the greeting and the car
+        val d = if (fast) 650L else 1100L
+        if (::brand.isInitialized) {
+            brand.animate().cancel(); brand.alpha = 0f; brand.scaleX = 0.92f; brand.scaleY = 0.92f
+            brand.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(0).setDuration(if (fast) 250 else 450).withEndAction {
+                brand.animate().alpha(0f).setStartDelay(if (fast) 200 else 350).setDuration(if (fast) 200 else 350).start()
+            }.start()
+        }
+        greet.animate().alpha(1f).setStartDelay(d).setDuration(gIn).withEndAction {
             greet.animate().alpha(0f).setStartDelay(if (fast) 600 else 900).setDuration(if (fast) 300 else 600).start()
         }.start()
-        if (greetName.text.isNotBlank()) greetName.animate().alpha(1f).setStartDelay(0).setDuration(gIn).withEndAction {
+        if (greetName.text.isNotBlank()) greetName.animate().alpha(1f).setStartDelay(d).setDuration(gIn).withEndAction {
             greetName.animate().alpha(0f).setStartDelay(if (fast) 600 else 900).setDuration(if (fast) 300 else 600).start()
         }.start()
         drl.alpha = 0f; drl.scaleX = 0f
-        drl.animate().alpha(1f).scaleX(1f).setStartDelay(if (fast) 100 else 250).setDuration(if (fast) 700 else 1100).setInterpolator(DecelerateInterpolator())
+        drl.animate().alpha(1f).scaleX(1f).setStartDelay(d + if (fast) 100 else 250).setDuration(if (fast) 700 else 1100).setInterpolator(DecelerateInterpolator())
             .withEndAction { drl.animate().alpha(0f).setStartDelay(0).setDuration(400).start() }.start()
-        carLayer.animate().alpha(1f).setStartDelay(if (fast) 700 else 1400).setDuration(if (fast) 500 else 1200).start()
-        carOn.animate().alpha(1f).setStartDelay(if (fast) 1100 else 2400).setDuration(if (fast) 200 else 700).start()
-        hud.animate().alpha(1f).setStartDelay(if (fast) 900 else 2300).setDuration(if (fast) 400 else 900).start()
-        nameplate.animate().alpha(1f).setStartDelay(if (fast) 900 else 2300).setDuration(if (fast) 400 else 1000).start()
+        carLayer.animate().alpha(1f).setStartDelay(d + if (fast) 700 else 1400).setDuration(if (fast) 500 else 1200).start()
+        carOn.animate().alpha(1f).setStartDelay(d + if (fast) 1100 else 2400).setDuration(if (fast) 200 else 700).start()
+        hud.animate().alpha(1f).setStartDelay(d + if (fast) 900 else 2300).setDuration(if (fast) 400 else 900).start()
+        nameplate.animate().alpha(1f).setStartDelay(d + if (fast) 900 else 2300).setDuration(if (fast) 400 else 1000).start()
 
         // nothing keeps animating after the intro: an idle home draws zero frames (light on weak units)
         breathAnim?.cancel(); breathAnim = null

@@ -8,7 +8,11 @@ on:
         required: true
         default: superb
         type: choice
-        options: [superb, octavia, corolla, golfgti, polo, ibiza, leon]
+        options: [superb, swift, octavia, corolla, golfgti, polo, ibiza, leon]
+      color:
+        description: "Color shown first (white, black, graphite, silver, red, blue, navy). Optional"
+        required: false
+        default: ""
       customer:
         description: "Customer name for the file name (optional, English letters)"
         required: false
@@ -35,6 +39,7 @@ jobs:
         env:
           CAR: ${{ inputs.car }}
           CUSTOMER: ${{ inputs.customer }}
+          COLOR: ${{ inputs.color }}
         run: |
           python3 - <<'PY'
           import json, os, re, urllib.request
@@ -50,6 +55,9 @@ jobs:
               assert data[:2] == b"PK", p
               open(f"app/src/main/assets/bundle/{p['color']}.carpack", "wb").write(data)
               print("packed", p["color"], p["code"], len(data))
+          col = re.sub(r"[^a-z]", "", os.environ.get("COLOR", "").lower())
+          if col and any(p["color"] == col for p in packs):
+              open("app/src/main/assets/bundle/default.txt", "w").write(col)
           app = json.loads(get("app.json"))
           model = re.sub(r"[^A-Za-z0-9]+", "-", packs[0]["model"].title()).strip("-")
           who = re.sub(r"[^A-Za-z0-9]+", "-", os.environ.get("CUSTOMER", "")).strip("-")

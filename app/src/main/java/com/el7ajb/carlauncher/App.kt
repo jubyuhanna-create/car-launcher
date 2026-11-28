@@ -963,7 +963,10 @@ private fun BundleSheet(
     onClose: () -> Unit, onInstalled: (Car) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var sel by remember { mutableIntStateOf(items.indexOfFirst { it.id == current }.coerceAtLeast(0)) }
+    var sel by remember {
+        val dc = Bundle.defaultColor(act)
+        mutableIntStateOf(items.indexOfFirst { it.id == current }.takeIf { it >= 0 } ?: items.indexOfFirst { it.color.k == dc }.coerceAtLeast(0))
+    }
     val previews = remember { mutableStateMapOf<Int, ImageBitmap>() }
     var busy by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {

@@ -39,13 +39,18 @@ object Bundle {
             }
         } catch (_: Throwable) {}
         // a fixed, familiar color order
-        val order = listOf("white", "black", "graphite", "silver", "red", "blue")
+        val order = listOf("white", "black", "graphite", "silver", "red", "blue", "navy")
         val sorted = out.sortedBy { order.indexOf(it.color.k).let { i -> if (i < 0) 99 else i } }
         cache = sorted
         return sorted
     }
 
     fun has(ctx: Context) = list(ctx).isNotEmpty()
+
+    /** The color the seller picked for this customer (assets/bundle/default.txt), shown first. */
+    fun defaultColor(ctx: Context): String? = try {
+        ctx.assets.open("bundle/default.txt").bufferedReader().use { it.readText().trim() }.ifEmpty { null }
+    } catch (_: Throwable) { null }
 
     /** The lights-on home picture of one color, small, for the color chooser. */
     fun preview(ctx: Context, item: Item): Bitmap? = try {

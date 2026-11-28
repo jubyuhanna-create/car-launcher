@@ -54,6 +54,7 @@ object S {
         "silver" to arrayOf("فضي", "כסוף", "Silver"),
         "red" to arrayOf("أحمر", "אדום", "Red"),
         "blue" to arrayOf("أزرق", "כחול", "Blue"),
+        "navy" to arrayOf("كحلي", "כחול כהה", "Navy"),
         "loading" to arrayOf("لحظة...", "רגע...", "One moment..."),
         "version" to arrayOf("الإصدار", "גרסה", "Version"),
         "music" to arrayOf("موسيقى", "מוזיקה", "Music"),

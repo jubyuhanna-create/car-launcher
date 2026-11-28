@@ -1,0 +1,26 @@
+WoWDRIVE-Swift.apk 45312626 bytes
+internet off
+installed
+  [shot] 1_first_start
+  texts: "" "" "" "" "" "" "" "SUZUKI" "SWIFT  2008" "Navy" "" "" "" "" "" "" "" "Start" "" 
+  Start at: 512 543
+  [shot] 2_color_black
+  cars on screen: swift-xeqdw 
+  frames: 216
+  [shot] 3_after_start
+  [shot] 4_home
+  [shot] 4b_wake_logo
+  [shot] 4c_after_wake
+  [shot] 5_showroom
+== change color later, still offline
+  [shot] 6_picker
+  tapped Car colors
+  [shot] 7_red
+  cars on screen now: swift-tmyjt 
+  [shot] 8_home_red
+== unit set to China time, car in Nazareth
+  system zone: Asia/Shanghai, system time: 20:07, Israel time: 14:07
+  [shot] 9_home_china_zone
+  Drive clock shows: text="14:07"
+  [shot] 10_settings_zone_warning
+  no crashes
